@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- be9d607: update naming around package
+
 ## 0.1.0 - Initial MVP
 
 ### Added
