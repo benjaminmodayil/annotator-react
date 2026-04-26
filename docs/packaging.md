@@ -38,6 +38,37 @@ Runtime dependencies are externalized from the bundle:
 
 This keeps the package small and avoids bundling a second React copy.
 
+## Release automation
+
+This repo uses Changesets plus GitHub Actions:
+
+- `.changeset/config.json` configures versioning/changelog behavior.
+- `npm run changeset` creates a release note and requested semver bump.
+- `npm run version-packages` applies pending changesets to `package.json`, `package-lock.json`, and `CHANGELOG.md`.
+- `npm run release` runs the full verification suite and publishes changed packages.
+- `.github/workflows/ci.yml` runs `npm run check:all` on PRs and `main` pushes.
+- `.github/workflows/release.yml` opens/updates a Version Packages PR when changesets exist, then publishes to npm after that PR is merged.
+
+Typical PR flow:
+
+```bash
+# Make code/docs changes.
+npm run check:all
+npm run changeset
+```
+
+Commit the generated `.changeset/*.md` file with the feature/fix. Pick:
+
+- `patch` for bug fixes, docs/package polish, and small behavior improvements.
+- `minor` for new backwards-compatible features.
+- `major` for breaking API/import/package behavior.
+
+After merge to `main`, the Release workflow creates or updates a PR titled `chore: version packages`. Review that PR's `package.json`, `package-lock.json`, and `CHANGELOG.md`. Merging it triggers the publish path.
+
+The publish path is designed for npm Trusted Publishing with provenance. In the npm package settings, add this GitHub repository and workflow as a trusted publisher for `.github/workflows/release.yml`. The workflow sets `id-token: write` and `NPM_CONFIG_PROVENANCE=true`, so no long-lived `NPM_TOKEN` secret should be needed in GitHub.
+
+Keep the local `~/.npmrc` token only for manual emergency publishes.
+
 ## Registry metadata checklist
 
 Before the first publish, verify `package.json` has final public values for:
@@ -106,6 +137,8 @@ npm publish --access public
 ```
 
 Use the correct semver bump (`patch`, `minor`, `major`, or explicit version) for the actual release. Create the git tag and GitHub release after the package is verified.
+
+Prefer the automated Changesets workflow above for normal releases.
 
 `prepublishOnly` runs `npm run check:all` automatically.
 
