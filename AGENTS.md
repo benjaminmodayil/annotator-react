@@ -41,12 +41,12 @@ merge change to main
 
 ## Guardrails
 
-- Package scope is `@miku`, not `@execmd`.
+- Package scope is `@mikuexe`, not `@execmd`.
 - Do not commit `.npmrc`.
 - Do not commit `opensrc/`.
 - Keep published files limited to `dist/`, `README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`.
 - Preserve top-level `"use client"` in built main outputs.
-- `@miku/annotator-react/register` must load before React.
+- `@mikuexe/annotator-react/register` must load before React.
 - Export/copy payloads must not include internal DOM refs.
 
 ## When editing

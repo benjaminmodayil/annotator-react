@@ -1,5 +1,5 @@
 {
-  "name": "@miku/annotator-react-vite-example",
+  "name": "@mikuexe/annotator-react-vite-example",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@miku/annotator-react": "file:../..",
+    "@mikuexe/annotator-react": "file:../..",
     "@vitejs/plugin-react": "^5.1.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

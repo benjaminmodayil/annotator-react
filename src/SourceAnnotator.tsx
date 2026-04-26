@@ -25,7 +25,7 @@ type StoredAnnotation = Annotation & {
   rect: Rect;
 };
 
-const ROOT_ATTR = "data-miku-annotator-root";
+const ROOT_ATTR = "data-mikuexe-annotator-root";
 const DEFAULT_HOTKEY = "alt+a";
 const DEFAULT_OUTPUT: SourceAnnotatorOutput = "markdown";
 

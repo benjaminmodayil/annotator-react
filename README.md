@@ -1,11 +1,11 @@
-# @miku/annotator-react
+# @mikuexe/annotator-react
 
 React devtool overlay for source-aware UI annotations. Select live DOM elements, write notes, then copy an agent-ready Markdown prompt.
 
 ## Install
 
 ```bash
-npm install @miku/annotator-react
+npm install @mikuexe/annotator-react
 ```
 
 Peer deps:
@@ -20,10 +20,10 @@ npm install react react-dom
 
 ```tsx
 // src/main.tsx
-import "@miku/annotator-react/register";
+import "@mikuexe/annotator-react/register";
 
 import { createRoot } from "react-dom/client";
-import { SourceAnnotator } from "@miku/annotator-react";
+import { SourceAnnotator } from "@mikuexe/annotator-react";
 import { App } from "./App";
 
 createRoot(document.getElementById("root")!).render(
@@ -125,7 +125,7 @@ type Annotation = {
 
 ## How source capture works
 
-`@miku/annotator-react/register` installs the React DevTools hook through `bippy/install-hook-only`. `element-source` then uses React ownership data to resolve selected DOM elements back to React components/source.
+`@mikuexe/annotator-react/register` installs the React DevTools hook through `bippy/install-hook-only`. `element-source` then uses React ownership data to resolve selected DOM elements back to React components/source.
 
 If source resolution fails, annotations still include DOM context: tag, HTML, text, selector, and any nearest React component/owner path that could be resolved.
 
@@ -149,7 +149,7 @@ npm run pack:dry-run   # inspect npm package contents
 
 ## Publish support
 
-Package support links currently target `https://github.com/miku/annotator-react`. Confirm `repository`, `homepage`, and `bugs` in `package.json` point at the final public repo before publishing.
+Package support links currently target `https://github.com/mikuexe/annotator-react`. Confirm `repository`, `homepage`, and `bugs` in `package.json` point at the final public repo before publishing.
 
 
 ## Current constraints

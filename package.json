@@ -1,5 +1,5 @@
 {
-  "name": "@miku/annotator-react",
+  "name": "@mikuexe/annotator-react",
   "version": "0.1.0",
   "description": "React overlay for source-aware UI annotations copied into coding agents.",
   "type": "module",
@@ -7,11 +7,11 @@
   "author": "Benjamin Modayil",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/miku/annotator-react.git"
+    "url": "git+https://github.com/mikuexe/annotator-react.git"
   },
-  "homepage": "https://github.com/miku/annotator-react#readme",
+  "homepage": "https://github.com/mikuexe/annotator-react#readme",
   "bugs": {
-    "url": "https://github.com/miku/annotator-react/issues"
+    "url": "https://github.com/mikuexe/annotator-react/issues"
   },
   "keywords": [
     "react",

@@ -1,4 +1,4 @@
-# @miku/annotator-react
+# @mikuexe/annotator-react
 
 ## Problem Statement
 
@@ -6,7 +6,7 @@ How might we let React developers annotate live UI elements and copy source-awar
 
 ## Recommended Direction
 
-Build `@miku/annotator-react`: a tiny React devtool package around `element-source`.
+Build `@mikuexe/annotator-react`: a tiny React devtool package around `element-source`.
 
 The package provides one default component:
 
@@ -35,8 +35,8 @@ The library can expose small hooks/primitives later, but the first public surfac
 ### Package API
 
 ```tsx
-import "@miku/annotator-react/register";
-import { SourceAnnotator } from "@miku/annotator-react";
+import "@mikuexe/annotator-react/register";
+import { SourceAnnotator } from "@mikuexe/annotator-react";
 
 <SourceAnnotator />;
 ```
@@ -145,7 +145,7 @@ Example must prove:
 So the package should provide a tiny explicit register entrypoint:
 
 ```ts
-import "@miku/annotator-react/register";
+import "@mikuexe/annotator-react/register";
 ```
 
 For Vite, this must appear at the very top of `src/main.tsx`, before any React imports. The register entrypoint can likely import `bippy/install-hook-only` to install the hook with minimal overhead.

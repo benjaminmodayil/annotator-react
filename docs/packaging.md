@@ -2,7 +2,7 @@
 
 ## Package shape
 
-`@miku/annotator-react` publishes only:
+`@mikuexe/annotator-react` publishes only:
 
 - `dist/`
 - `README.md`
@@ -13,8 +13,8 @@
 The package exposes two public entrypoints:
 
 ```ts
-import { SourceAnnotator } from "@miku/annotator-react";
-import "@miku/annotator-react/register";
+import { SourceAnnotator } from "@mikuexe/annotator-react";
+import "@mikuexe/annotator-react/register";
 ```
 
 ## Build outputs
@@ -69,6 +69,26 @@ The publish path is designed for npm Trusted Publishing with provenance. In the 
 
 Keep the local `~/.npmrc` token only for manual emergency publishes.
 
+For the first local/manual publish, do **not** use provenance. npm provenance is generated only from supported CI providers, so local publishes fail with `Automatic provenance generation not supported for provider: null` if provenance is enabled.
+
+```bash
+NPM_CONFIG_PROVENANCE=false npm publish --access public
+```
+
+After the package exists and Trusted Publishing is configured on npm, use the automated GitHub release flow for provenance-backed publishes.
+
+If npm returns `E403 ... Two-factor authentication or granular access token with bypass 2fa enabled is required`, fix npm account auth before retrying:
+
+- Option A: enable 2FA on the npm account, then publish with a one-time password:
+
+  ```bash
+  NPM_CONFIG_PROVENANCE=false npm publish --access public --otp=123456
+  ```
+
+- Option B: create a granular npm access token with publish permission and **Bypass 2FA** enabled, put it in `~/.npmrc`, then retry the publish command.
+
+Trusted Publishing avoids this local-token requirement for future CI publishes.
+
 ## Registry metadata checklist
 
 Before the first publish, verify `package.json` has final public values for:
@@ -104,24 +124,24 @@ After `npm run build`, verify both module systems from outside this repo:
 ```bash
 tmpdir=$(mktemp -d)
 npm pack --pack-destination "$tmpdir"
-pkg="$tmpdir"/miku-annotator-react-0.1.0.tgz
+pkg="$tmpdir"/mikuexe-annotator-react-0.1.0.tgz
 
 mkdir "$tmpdir/smoke"
 cd "$tmpdir/smoke"
 npm init -y
 npm install "$pkg" react react-dom
 
-node --input-type=module -e 'import("@miku/annotator-react").then((m) => console.log(typeof m.SourceAnnotator))'
-node -e 'const m = require("@miku/annotator-react"); console.log(typeof m.SourceAnnotator)'
-node --input-type=module -e 'import("@miku/annotator-react/register").then(() => console.log("esm register ok"))'
-node -e 'require("@miku/annotator-react/register"); console.log("cjs register ok")'
+node --input-type=module -e 'import("@mikuexe/annotator-react").then((m) => console.log(typeof m.SourceAnnotator))'
+node -e 'const m = require("@mikuexe/annotator-react"); console.log(typeof m.SourceAnnotator)'
+node --input-type=module -e 'import("@mikuexe/annotator-react/register").then(() => console.log("esm register ok"))'
+node -e 'require("@mikuexe/annotator-react/register"); console.log("cjs register ok")'
 ```
 
 Expected output includes `function`, `function`, `esm register ok`, and `cjs register ok`.
 
 ## Host integration caveats
 
-- `@miku/annotator-react/register` must run before React imports so the DevTools hook is installed early enough for source capture.
+- `@mikuexe/annotator-react/register` must run before React imports so the DevTools hook is installed early enough for source capture.
 - `SourceAnnotator` renders its own Sonner `<Toaster />` by default. Apps that already own Sonner rendering should use `<SourceAnnotator renderToaster={false} />`.
 - Clipboard writes require a browser context with clipboard permissions.
 
@@ -133,7 +153,7 @@ For a release candidate:
 npm version patch --no-git-tag-version
 npm run check:all
 # run temp-project smoke tests above
-npm publish --access public
+NPM_CONFIG_PROVENANCE=false npm publish --access public
 ```
 
 Use the correct semver bump (`patch`, `minor`, `major`, or explicit version) for the actual release. Create the git tag and GitHub release after the package is verified.

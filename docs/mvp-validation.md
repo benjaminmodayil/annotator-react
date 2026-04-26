@@ -2,7 +2,7 @@
 
 ## What the example verifies
 
-- `examples/vite-react/src/main.tsx` imports `@miku/annotator-react/register` before React imports.
+- `examples/vite-react/src/main.tsx` imports `@mikuexe/annotator-react/register` before React imports.
 - The default `<SourceAnnotator />` renders a floating Annotate button.
 - Annotate mode highlights hovered elements and excludes the overlay from selection.
 - Clicking a page element opens a note popover.

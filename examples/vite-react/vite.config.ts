@@ -9,8 +9,8 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
-      "@miku/annotator-react/register": fileURLToPath(new URL("../../src/register.ts", import.meta.url)),
-      "@miku/annotator-react": fileURLToPath(new URL("../../src/index.ts", import.meta.url)),
+      "@mikuexe/annotator-react/register": fileURLToPath(new URL("../../src/register.ts", import.meta.url)),
+      "@mikuexe/annotator-react": fileURLToPath(new URL("../../src/index.ts", import.meta.url)),
       react: rootNodeModules("react"),
       "react-dom": rootNodeModules("react-dom"),
     },

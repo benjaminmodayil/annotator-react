@@ -1,4 +1,4 @@
-# @miku/annotator-react Vite example
+# @mikuexe/annotator-react Vite example
 
 Local playground for the package.
 
@@ -9,7 +9,7 @@ npm run dev
 
 What to verify:
 
-1. `src/main.tsx` imports `@miku/annotator-react/register` before React imports.
+1. `src/main.tsx` imports `@mikuexe/annotator-react/register` before React imports.
 2. Click **Annotate**.
 3. Hover elements — highlight should follow page DOM, not the overlay.
 4. Click an element, write a note, save it.

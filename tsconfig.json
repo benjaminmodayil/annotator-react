@@ -16,8 +16,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "paths": {
-      "@miku/annotator-react": ["./src/index.ts"],
-      "@miku/annotator-react/register": ["./src/register.ts"]
+      "@mikuexe/annotator-react": ["./src/index.ts"],
+      "@mikuexe/annotator-react/register": ["./src/register.ts"]
     },
     "jsx": "react-jsx"
   },
