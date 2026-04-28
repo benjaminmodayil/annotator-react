@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+### Patch Changes
+
+- cb4043a: Improve annotation mode interactions: block host pointer events while selecting, edit/delete saved annotations, preview pins on hover, and clear copied annotations after collect.
+
 ## 0.1.1
 
 ### Patch Changes
