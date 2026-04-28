@@ -18,6 +18,7 @@ type SelectedElement = {
   rect: Rect;
   annotation: Annotation | null;
   loading: boolean;
+  editingId?: string;
 };
 
 type StoredAnnotation = Annotation & {
@@ -28,6 +29,17 @@ type StoredAnnotation = Annotation & {
 const ROOT_ATTR = "data-mikuexe-annotator-root";
 const DEFAULT_HOTKEY = "alt+a";
 const DEFAULT_OUTPUT: SourceAnnotatorOutput = "markdown";
+const BLOCKED_INTERACTION_EVENTS = [
+  "pointerdown",
+  "pointerup",
+  "mousedown",
+  "mouseup",
+  "dblclick",
+  "auxclick",
+  "contextmenu",
+  "touchstart",
+  "touchend",
+] as const;
 
 export function SourceAnnotator({
   enabled = true,
@@ -41,6 +53,7 @@ export function SourceAnnotator({
   const [selected, setSelected] = useState<SelectedElement | null>(null);
   const [note, setNote] = useState("");
   const [annotations, setAnnotations] = useState<StoredAnnotation[]>([]);
+  const [previewedAnnotation, setPreviewedAnnotation] = useState<StoredAnnotation | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const selectedRef = useRef<SelectedElement | null>(null);
 
@@ -93,6 +106,17 @@ export function SourceAnnotator({
       setHoverRect(getRect(target));
     };
 
+    const suppressInteraction = (event: Event) => {
+      const target = getAnnotatableTarget(event.target);
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+
     const onClick = (event: MouseEvent) => {
       const target = getAnnotatableTarget(event.target);
       if (!target) {
@@ -101,6 +125,7 @@ export function SourceAnnotator({
 
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
 
       const rect = getRect(target);
       setSelected({ element: target, rect, annotation: null, loading: true });
@@ -126,10 +151,12 @@ export function SourceAnnotator({
 
     document.addEventListener("pointerover", onPointerOver, true);
     document.addEventListener("click", onClick, true);
+    BLOCKED_INTERACTION_EVENTS.forEach((eventName) => document.addEventListener(eventName, suppressInteraction, true));
 
     return () => {
       document.removeEventListener("pointerover", onPointerOver, true);
       document.removeEventListener("click", onClick, true);
+      BLOCKED_INTERACTION_EVENTS.forEach((eventName) => document.removeEventListener(eventName, suppressInteraction, true));
     };
   }, [enabled, isAnnotating]);
 
@@ -163,11 +190,34 @@ export function SourceAnnotator({
       ? { ...current.annotation, note: trimmedNote }
       : await captureElementAnnotation(current.element, trimmedNote);
 
-    setAnnotations((existing) => [...existing, { ...annotation, targetElement: current.element, rect: getRect(current.element) }]);
+    const storedAnnotation = { ...annotation, targetElement: current.element, rect: getRect(current.element) };
+
+    setAnnotations((existing) => {
+      if (!current.editingId) {
+        return [...existing, storedAnnotation];
+      }
+
+      return existing.map((item) => (item.id === current.editingId ? storedAnnotation : item));
+    });
     setSelected(null);
     setNote("");
-    setStatus("Annotation saved.");
+    setPreviewedAnnotation(null);
+    setStatus(current.editingId ? "Annotation updated." : "Annotation saved.");
   }, [note]);
+
+  const editAnnotation = useCallback((annotation: StoredAnnotation) => {
+    setSelected({ element: annotation.targetElement, rect: getRect(annotation.targetElement), annotation, loading: false, editingId: annotation.id });
+    setNote(annotation.note);
+    setPreviewedAnnotation(null);
+    setStatus("Editing annotation.");
+  }, []);
+
+  const deleteAnnotation = useCallback((annotationId: string) => {
+    setAnnotations((existing) => existing.filter((annotation) => annotation.id !== annotationId));
+    setSelected((current) => (current?.editingId === annotationId ? null : current));
+    setPreviewedAnnotation((current) => (current?.id === annotationId ? null : current));
+    setStatus("Annotation deleted.");
+  }, []);
 
   const collect = useCallback(async () => {
     const payload = createAnnotationCollection(annotations.map(({ rect: _rect, targetElement: _targetElement, ...annotation }) => annotation));
@@ -179,9 +229,11 @@ export function SourceAnnotator({
       setIsAnnotating(false);
       setSelected(null);
       setHoverRect(null);
+      setAnnotations([]);
+      setPreviewedAnnotation(null);
       setNote("");
+      setStatus(null);
       toast.success("Annotations copied", { description: `${payload.annotations.length} copied to clipboard.` });
-      setStatus(`Copied ${payload.annotations.length} annotation${payload.annotations.length === 1 ? "" : "s"}.`);
     } catch (error) {
       toast.error("Copy failed", { description: error instanceof Error ? error.message : "Clipboard copy failed." });
       setStatus(error instanceof Error ? error.message : "Clipboard copy failed.");
@@ -209,9 +261,17 @@ export function SourceAnnotator({
       {selected ? <Box rect={selected.rect} kind="selected" /> : null}
       {isAnnotating
         ? annotations.map((annotation, index) => (
-            <Pin key={annotation.id} annotation={annotation} index={index} />
+            <Pin
+              key={annotation.id}
+              annotation={annotation}
+              index={index}
+              onEdit={editAnnotation}
+              onPreview={setPreviewedAnnotation}
+              onPreviewEnd={() => setPreviewedAnnotation(null)}
+            />
           ))
         : null}
+      {isAnnotating && previewedAnnotation ? <AnnotationPreview annotation={previewedAnnotation} /> : null}
 
       {selected ? (
         <div style={getPopoverStyle(selected.rect)} role="dialog" aria-label="Add source annotation">
@@ -230,7 +290,7 @@ export function SourceAnnotator({
               Cancel
             </button>
             <button type="button" onClick={addAnnotation} style={styles.primaryButton} disabled={selected.loading}>
-              Save note
+              {selected.editingId ? "Update note" : "Save note"}
             </button>
           </div>
         </div>
@@ -244,10 +304,19 @@ export function SourceAnnotator({
           </div>
           {annotations.length ? (
             <ol style={styles.annotationList}>
-              {annotations.map((annotation) => (
+              {annotations.map((annotation, index) => (
                 <li key={annotation.id} style={styles.annotationItem}>
-                  <div style={styles.noteText}>{annotation.note}</div>
-                  <div style={styles.metaText}>{formatSelectedSource(annotation)}</div>
+                  <div style={styles.annotationContent}>
+                    <div style={styles.noteText}>{annotation.note}</div>
+                    <div style={styles.metaText}>{formatSelectedSource(annotation)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteAnnotation(annotation.id)}
+                    style={styles.deleteButton}
+                  >
+                    Delete annotation {index + 1}
+                  </button>
                 </li>
               ))}
             </ol>
@@ -279,13 +348,41 @@ function Box({ rect, kind }: { rect: Rect; kind: "hover" | "selected" }) {
   );
 }
 
-function Pin({ annotation, index }: { annotation: StoredAnnotation; index: number }) {
+function Pin({
+  annotation,
+  index,
+  onEdit,
+  onPreview,
+  onPreviewEnd,
+}: {
+  annotation: StoredAnnotation;
+  index: number;
+  onEdit: (annotation: StoredAnnotation) => void;
+  onPreview: (annotation: StoredAnnotation) => void;
+  onPreviewEnd: () => void;
+}) {
   return (
-    <div
+    <button
+      type="button"
       style={{ ...styles.pin, top: Math.max(8, annotation.rect.top - 10), left: Math.max(8, annotation.rect.left - 10) }}
       title={annotation.note}
+      aria-label={`Edit annotation ${index + 1}`}
+      onClick={() => onEdit(annotation)}
+      onMouseOver={() => onPreview(annotation)}
+      onMouseOut={onPreviewEnd}
+      onFocus={() => onPreview(annotation)}
+      onBlur={onPreviewEnd}
     >
       {index + 1}
+    </button>
+  );
+}
+
+function AnnotationPreview({ annotation }: { annotation: StoredAnnotation }) {
+  return (
+    <div role="tooltip" style={getPreviewStyle(annotation.rect)}>
+      <div style={styles.noteText}>{annotation.note}</div>
+      <div style={styles.metaText}>{formatSelectedSource(annotation)}</div>
     </div>
   );
 }
@@ -322,6 +419,17 @@ function getPopoverStyle(rect: Rect): CSSProperties {
 
   return {
     ...styles.popover,
+    top: Math.max(8, top),
+    left,
+  };
+}
+
+function getPreviewStyle(rect: Rect): CSSProperties {
+  const top = Math.min(window.innerHeight - 120, rect.top + rect.height + 8);
+  const left = Math.min(window.innerWidth - 260, Math.max(8, rect.left));
+
+  return {
+    ...styles.preview,
     top: Math.max(8, top),
     left,
   };
@@ -414,6 +522,7 @@ const styles = {
   } satisfies CSSProperties,
   popover: {
     position: "fixed",
+    zIndex: 2,
     width: 320,
     pointerEvents: "auto",
     background: "#ffffff",
@@ -466,6 +575,7 @@ const styles = {
   } satisfies CSSProperties,
   panel: {
     position: "fixed",
+    zIndex: 1,
     right: 16,
     bottom: 68,
     width: 300,
@@ -502,11 +612,19 @@ const styles = {
     overflow: "auto",
   } satisfies CSSProperties,
   annotationItem: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 8,
+    alignItems: "start",
     marginBottom: 8,
+  } satisfies CSSProperties,
+  annotationContent: {
+    minWidth: 0,
   } satisfies CSSProperties,
   noteText: {
     color: "#0f172a",
     fontWeight: 650,
+    overflowWrap: "anywhere",
   } satisfies CSSProperties,
   emptyText: {
     color: "#64748b",
@@ -527,19 +645,42 @@ const styles = {
     color: "#475569",
     fontSize: 12,
   } satisfies CSSProperties,
+  deleteButton: {
+    border: "1px solid #fecaca",
+    borderRadius: 999,
+    background: "#fff1f2",
+    color: "#be123c",
+    padding: "4px 7px",
+    fontSize: 11,
+    fontWeight: 750,
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  preview: {
+    position: "fixed",
+    maxWidth: 240,
+    pointerEvents: "none",
+    background: "#ffffff",
+    border: "1px solid #cbd5e1",
+    borderRadius: 10,
+    padding: 10,
+    boxShadow: "0 14px 35px rgba(15, 23, 42, 0.18)",
+  } satisfies CSSProperties,
   pin: {
     position: "fixed",
+    border: 0,
     width: 20,
     height: 20,
     borderRadius: 999,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    pointerEvents: "none",
+    pointerEvents: "auto",
     background: "#f97316",
     color: "#ffffff",
     fontSize: 12,
     fontWeight: 800,
     boxShadow: "0 8px 18px rgba(15, 23, 42, 0.2)",
+    cursor: "pointer",
+    padding: 0,
   } satisfies CSSProperties,
 };
