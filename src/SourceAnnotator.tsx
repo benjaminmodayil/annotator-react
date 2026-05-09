@@ -69,6 +69,14 @@ export function SourceAnnotator({
 
   selectedRef.current = selected;
 
+  useEffect(() => {
+    setHoverRect(null);
+    setSelected(null);
+    setAnnotations([]);
+    setPreviewedAnnotation(null);
+    setNote("");
+  }, [resolvedTarget.document, resolvedTarget.frameElement]);
+
   const collection = useMemo(
     () =>
       createAnnotationCollection(

@@ -444,6 +444,71 @@ describe("SourceAnnotator", () => {
     warnSpy.mockRestore();
   });
 
+  it("clears selected and saved iframe annotations when the iframe document changes", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
+
+    const firstDocument = iframe.contentDocument;
+    if (!firstDocument) {
+      throw new Error("Expected iframe contentDocument in test environment.");
+    }
+
+    let currentDocument: Document = firstDocument;
+    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => currentDocument });
+
+    const savedTarget = firstDocument.createElement("button");
+    savedTarget.textContent = "Saved frame target";
+    savedTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    firstDocument.body.append(savedTarget);
+
+    const selectedTarget = firstDocument.createElement("button");
+    selectedTarget.textContent = "Selected frame target";
+    selectedTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 90, left: 55, width: 100, height: 40 }));
+    firstDocument.body.append(selectedTarget);
+
+    captureMocks.captureElementAnnotation.mockResolvedValueOnce(createAnnotation({ id: "ann-saved", note: "", text: "Saved frame target" }));
+    captureMocks.captureElementAnnotation.mockResolvedValueOnce(createAnnotation({ id: "ann-selected", note: "", text: "Selected frame target" }));
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    await act(async () => {
+      savedTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    act(() => {
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Saved note");
+    });
+
+    await act(async () => {
+      getButton(container, "Save note").click();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      selectedTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[title="Saved note"]')).toBeInstanceOf(HTMLButtonElement);
+    expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
+
+    currentDocument = document.implementation.createHTMLDocument("next frame");
+
+    act(() => {
+      iframe.dispatchEvent(new Event("load"));
+    });
+
+    expect(container.querySelector('[title="Saved note"]')).toBeNull();
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(container.querySelector('[data-mikuexe-annotator-box="selected"]')).toBeNull();
+  });
+
   it("reattaches iframe listeners when a same-origin iframe navigates", () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
