@@ -9,4 +9,5 @@ export type {
   AnnotationSource,
   SourceAnnotatorOutput,
   SourceAnnotatorProps,
+  SourceAnnotatorTarget,
 } from "./types";

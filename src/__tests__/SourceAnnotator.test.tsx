@@ -302,6 +302,197 @@ describe("SourceAnnotator", () => {
     expect(container.textContent).not.toContain("Copy me");
     expect(container.textContent).not.toContain("Copied 1 annotation");
   });
+
+  it("selects elements inside a same-origin iframe target and positions the overlay in the host viewport", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
+
+    const frameDocument = iframe.contentDocument;
+    if (!frameDocument) {
+      throw new Error("Expected iframe contentDocument in test environment.");
+    }
+
+    const target = frameDocument.createElement("button");
+    target.textContent = "Frame target";
+    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    frameDocument.body.append(target);
+
+    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-frame", note: "", text: "Frame target" }));
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    act(() => {
+      target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
+    });
+
+    const hoverBox = container.querySelector<HTMLElement>('[data-mikuexe-annotator-box="hover"]');
+    expect(hoverBox?.style.top).toBe("225px");
+    expect(hoverBox?.style.left).toBe("330px");
+
+    await act(async () => {
+      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(captureMocks.captureElementAnnotation).toHaveBeenCalledWith(target, "");
+    expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
+  });
+
+  it("blocks iframe app interactions while selecting an iframe element", async () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+
+    const frameDocument = iframe.contentDocument;
+    if (!frameDocument) {
+      throw new Error("Expected iframe contentDocument in test environment.");
+    }
+
+    const onPointerDown = vi.fn();
+    const onClick = vi.fn();
+    const target = frameDocument.createElement("button");
+    target.textContent = "Frame interactive target";
+    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    target.addEventListener("pointerdown", onPointerDown);
+    target.addEventListener("click", onClick);
+    frameDocument.body.append(target);
+
+    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-frame", note: "", text: "Frame interactive target" }));
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    act(() => {
+      target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    });
+
+    await act(async () => {
+      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(onPointerDown).not.toHaveBeenCalled();
+    expect(onClick).not.toHaveBeenCalled();
+    expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
+  });
+
+  it("clears the iframe hover box when the pointer leaves the iframe", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
+
+    const frameDocument = iframe.contentDocument;
+    if (!frameDocument) {
+      throw new Error("Expected iframe contentDocument in test environment.");
+    }
+
+    const target = frameDocument.createElement("button");
+    target.textContent = "Frame target";
+    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    frameDocument.body.append(target);
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    act(() => {
+      target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeInstanceOf(HTMLDivElement);
+
+    act(() => {
+      iframe.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false, cancelable: true }));
+    });
+
+    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeNull();
+  });
+
+  it("warns and does not fall back to parent document annotation for inaccessible iframes", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => null });
+    document.body.append(iframe);
+
+    const parentTarget = document.createElement("button");
+    parentTarget.textContent = "Parent target";
+    parentTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    document.body.append(parentTarget);
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    act(() => {
+      parentTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
+    });
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeNull();
+
+    warnSpy.mockRestore();
+  });
+
+  it("reattaches iframe listeners when a same-origin iframe navigates", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
+
+    const firstDocument = iframe.contentDocument;
+    if (!firstDocument) {
+      throw new Error("Expected iframe contentDocument in test environment.");
+    }
+
+    let currentDocument: Document = firstDocument;
+    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => currentDocument });
+
+    const firstTarget = firstDocument.createElement("button");
+    firstTarget.textContent = "First frame target";
+    firstTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
+    firstDocument.body.append(firstTarget);
+
+    const container = renderAnnotator({ target: iframe });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    act(() => {
+      firstTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
+    });
+
+    expect(container.querySelector<HTMLElement>('[data-mikuexe-annotator-box="hover"]')?.style.top).toBe("225px");
+
+    const nextDocument = document.implementation.createHTMLDocument("next frame");
+    currentDocument = nextDocument;
+    const nextTarget = nextDocument.createElement("button");
+    nextTarget.textContent = "Next frame target";
+    nextTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 70, left: 45, width: 120, height: 50 }));
+    nextDocument.body.append(nextTarget);
+
+    act(() => {
+      iframe.dispatchEvent(new Event("load"));
+    });
+
+    act(() => {
+      nextTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
+    });
+
+    const hoverBox = container.querySelector<HTMLElement>('[data-mikuexe-annotator-box="hover"]');
+    expect(hoverBox?.style.top).toBe("270px");
+    expect(hoverBox?.style.left).toBe("345px");
+  });
 });
 
 function getButton(container: Element, text: string): HTMLButtonElement {

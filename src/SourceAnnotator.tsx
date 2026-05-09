@@ -4,7 +4,7 @@ import { Toaster, toast } from "sonner";
 import { captureElementAnnotation } from "./capture";
 import { copyTextToClipboard } from "./clipboard";
 import { createAnnotationCollection, formatAnnotationCollection } from "./format";
-import type { Annotation, SourceAnnotatorOutput, SourceAnnotatorProps } from "./types";
+import type { Annotation, SourceAnnotatorOutput, SourceAnnotatorProps, SourceAnnotatorTarget } from "./types";
 
 type Rect = {
   top: number;
@@ -16,6 +16,7 @@ type Rect = {
 type SelectedElement = {
   element: Element;
   rect: Rect;
+  frameElement: HTMLIFrameElement | null;
   annotation: Annotation | null;
   loading: boolean;
   editingId?: string;
@@ -24,6 +25,12 @@ type SelectedElement = {
 type StoredAnnotation = Annotation & {
   targetElement: Element;
   rect: Rect;
+  frameElement: HTMLIFrameElement | null;
+};
+
+type ResolvedTarget = {
+  document: Document | null;
+  frameElement: HTMLIFrameElement | null;
 };
 
 const ROOT_ATTR = "data-mikuexe-annotator-root";
@@ -45,6 +52,7 @@ export function SourceAnnotator({
   enabled = true,
   hotkey = DEFAULT_HOTKEY,
   output = DEFAULT_OUTPUT,
+  target,
   onCollect,
   renderToaster = true,
 }: SourceAnnotatorProps) {
@@ -57,17 +65,24 @@ export function SourceAnnotator({
   const [status, setStatus] = useState<string | null>(null);
   const selectedRef = useRef<SelectedElement | null>(null);
 
+  const resolvedTarget = useResolvedTarget(target);
+
   selectedRef.current = selected;
 
   const collection = useMemo(
-    () => createAnnotationCollection(annotations.map(({ rect: _rect, targetElement: _targetElement, ...annotation }) => annotation)),
+    () =>
+      createAnnotationCollection(
+        annotations.map(({ rect: _rect, targetElement: _targetElement, frameElement: _frameElement, ...annotation }) => annotation),
+      ),
     [annotations],
   );
 
   const refreshTrackedRects = useCallback(() => {
     setHoverRect(null);
-    setSelected((current) => (current ? { ...current, rect: getRect(current.element) } : current));
-    setAnnotations((existing) => existing.map((annotation) => ({ ...annotation, rect: getRect(annotation.targetElement) })));
+    setSelected((current) => (current ? { ...current, rect: getRect(current.element, current.frameElement) } : current));
+    setAnnotations((existing) =>
+      existing.map((annotation) => ({ ...annotation, rect: getRect(annotation.targetElement, annotation.frameElement) })),
+    );
   }, []);
 
   useEffect(() => {
@@ -86,29 +101,44 @@ export function SourceAnnotator({
       setIsAnnotating((current) => enabled && !current);
     };
 
+    if (typeof document === "undefined") {
+      return;
+    }
+
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [enabled, hotkey]);
+    if (resolvedTarget.document && resolvedTarget.document !== document) {
+      resolvedTarget.document.addEventListener("keydown", onKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (resolvedTarget.document && resolvedTarget.document !== document) {
+        resolvedTarget.document.removeEventListener("keydown", onKeyDown);
+      }
+    };
+  }, [enabled, hotkey, resolvedTarget.document]);
 
   useEffect(() => {
-    if (!enabled || !isAnnotating) {
+    if (!enabled || !isAnnotating || !resolvedTarget.document) {
       setHoverRect(null);
       return;
     }
 
+    const activeDocument = resolvedTarget.document;
+
     const onPointerOver = (event: PointerEvent) => {
-      const target = getAnnotatableTarget(event.target);
-      if (!target) {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      if (!eventTarget) {
         setHoverRect(null);
         return;
       }
 
-      setHoverRect(getRect(target));
+      setHoverRect(getRect(eventTarget, resolvedTarget.frameElement));
     };
 
     const suppressInteraction = (event: Event) => {
-      const target = getAnnotatableTarget(event.target);
-      if (!target) {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      if (!eventTarget) {
         return;
       }
 
@@ -118,8 +148,8 @@ export function SourceAnnotator({
     };
 
     const onClick = (event: MouseEvent) => {
-      const target = getAnnotatableTarget(event.target);
-      if (!target) {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      if (!eventTarget) {
         return;
       }
 
@@ -127,15 +157,15 @@ export function SourceAnnotator({
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      const rect = getRect(target);
-      setSelected({ element: target, rect, annotation: null, loading: true });
+      const rect = getRect(eventTarget, resolvedTarget.frameElement);
+      setSelected({ element: eventTarget, rect, frameElement: resolvedTarget.frameElement, annotation: null, loading: true });
       setNote("");
       setStatus("Resolving source…");
 
-      captureElementAnnotation(target, "")
+      captureElementAnnotation(eventTarget, "")
         .then((annotation) => {
           setSelected((current) => {
-            if (current?.element !== target) {
+            if (current?.element !== eventTarget) {
               return current;
             }
 
@@ -144,35 +174,49 @@ export function SourceAnnotator({
           setStatus(annotation.source ? "Source captured." : "Element captured without source info.");
         })
         .catch(() => {
-          setSelected((current) => (current?.element === target ? { ...current, loading: false } : current));
+          setSelected((current) => (current?.element === eventTarget ? { ...current, loading: false } : current));
           setStatus("Element captured without source info.");
         });
     };
 
-    document.addEventListener("pointerover", onPointerOver, true);
-    document.addEventListener("click", onClick, true);
-    BLOCKED_INTERACTION_EVENTS.forEach((eventName) => document.addEventListener(eventName, suppressInteraction, true));
+    const onFramePointerLeave = () => {
+      setHoverRect(null);
+    };
+
+    activeDocument.addEventListener("pointerover", onPointerOver, true);
+    activeDocument.addEventListener("click", onClick, true);
+    BLOCKED_INTERACTION_EVENTS.forEach((eventName) => activeDocument.addEventListener(eventName, suppressInteraction, true));
+    resolvedTarget.frameElement?.addEventListener("pointerleave", onFramePointerLeave);
 
     return () => {
-      document.removeEventListener("pointerover", onPointerOver, true);
-      document.removeEventListener("click", onClick, true);
-      BLOCKED_INTERACTION_EVENTS.forEach((eventName) => document.removeEventListener(eventName, suppressInteraction, true));
+      activeDocument.removeEventListener("pointerover", onPointerOver, true);
+      activeDocument.removeEventListener("click", onClick, true);
+      BLOCKED_INTERACTION_EVENTS.forEach((eventName) => activeDocument.removeEventListener(eventName, suppressInteraction, true));
+      resolvedTarget.frameElement?.removeEventListener("pointerleave", onFramePointerLeave);
     };
-  }, [enabled, isAnnotating]);
+  }, [enabled, isAnnotating, resolvedTarget]);
 
   useEffect(() => {
-    if (!enabled || !isAnnotating) {
+    if (!enabled || !isAnnotating || !resolvedTarget.document) {
       return;
     }
 
-    document.addEventListener("scroll", refreshTrackedRects, true);
+    const activeDocument = resolvedTarget.document;
+
+    activeDocument.addEventListener("scroll", refreshTrackedRects, true);
+    if (typeof document !== "undefined" && activeDocument !== document) {
+      document.addEventListener("scroll", refreshTrackedRects, true);
+    }
     window.addEventListener("resize", refreshTrackedRects);
 
     return () => {
-      document.removeEventListener("scroll", refreshTrackedRects, true);
+      activeDocument.removeEventListener("scroll", refreshTrackedRects, true);
+      if (typeof document !== "undefined" && activeDocument !== document) {
+        document.removeEventListener("scroll", refreshTrackedRects, true);
+      }
       window.removeEventListener("resize", refreshTrackedRects);
     };
-  }, [enabled, isAnnotating, refreshTrackedRects]);
+  }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
 
   const addAnnotation = useCallback(async () => {
     const current = selectedRef.current;
@@ -190,7 +234,12 @@ export function SourceAnnotator({
       ? { ...current.annotation, note: trimmedNote }
       : await captureElementAnnotation(current.element, trimmedNote);
 
-    const storedAnnotation = { ...annotation, targetElement: current.element, rect: getRect(current.element) };
+    const storedAnnotation = {
+      ...annotation,
+      targetElement: current.element,
+      rect: getRect(current.element, current.frameElement),
+      frameElement: current.frameElement,
+    };
 
     setAnnotations((existing) => {
       if (!current.editingId) {
@@ -206,7 +255,14 @@ export function SourceAnnotator({
   }, [note]);
 
   const editAnnotation = useCallback((annotation: StoredAnnotation) => {
-    setSelected({ element: annotation.targetElement, rect: getRect(annotation.targetElement), annotation, loading: false, editingId: annotation.id });
+    setSelected({
+      element: annotation.targetElement,
+      rect: getRect(annotation.targetElement, annotation.frameElement),
+      frameElement: annotation.frameElement,
+      annotation,
+      loading: false,
+      editingId: annotation.id,
+    });
     setNote(annotation.note);
     setPreviewedAnnotation(null);
     setStatus("Editing annotation.");
@@ -220,7 +276,9 @@ export function SourceAnnotator({
   }, []);
 
   const collect = useCallback(async () => {
-    const payload = createAnnotationCollection(annotations.map(({ rect: _rect, targetElement: _targetElement, ...annotation }) => annotation));
+    const payload = createAnnotationCollection(
+      annotations.map(({ rect: _rect, targetElement: _targetElement, frameElement: _frameElement, ...annotation }) => annotation),
+    );
     const text = formatAnnotationCollection(payload, output);
 
     try {
@@ -336,6 +394,7 @@ export function SourceAnnotator({
 function Box({ rect, kind }: { rect: Rect; kind: "hover" | "selected" }) {
   return (
     <div
+      data-mikuexe-annotator-box={kind}
       style={{
         ...styles.box,
         ...(kind === "selected" ? styles.selectedBox : styles.hoverBox),
@@ -387,8 +446,8 @@ function AnnotationPreview({ annotation }: { annotation: StoredAnnotation }) {
   );
 }
 
-function getAnnotatableTarget(target: EventTarget | null): Element | null {
-  if (!(target instanceof Element)) {
+function getAnnotatableTarget(target: EventTarget | null, ownerDocument: Document): Element | null {
+  if (!isElement(target, ownerDocument)) {
     return null;
   }
 
@@ -396,21 +455,82 @@ function getAnnotatableTarget(target: EventTarget | null): Element | null {
     return null;
   }
 
-  if (target === document.body || target === document.documentElement) {
+  if (target === ownerDocument.body || target === ownerDocument.documentElement) {
     return null;
   }
 
   return target;
 }
 
-function getRect(element: Element): Rect {
+function getRect(element: Element, frameElement: HTMLIFrameElement | null): Rect {
   const rect = element.getBoundingClientRect();
+  const frameRect = frameElement?.getBoundingClientRect();
+
   return {
-    top: rect.top,
-    left: rect.left,
+    top: rect.top + (frameRect?.top ?? 0),
+    left: rect.left + (frameRect?.left ?? 0),
     width: rect.width,
     height: rect.height,
   };
+}
+
+function useResolvedTarget(target: SourceAnnotatorTarget | undefined): ResolvedTarget {
+  const [navigationVersion, setNavigationVersion] = useState(0);
+  const resolvedTarget = useMemo(() => resolveTarget(target), [target, navigationVersion]);
+  const currentDocumentRef = useRef<Document | null>(resolvedTarget.document);
+  currentDocumentRef.current = resolvedTarget.document;
+
+  useEffect(() => {
+    if (typeof HTMLIFrameElement !== "undefined" && target instanceof HTMLIFrameElement) {
+      const updateTarget = () => {
+        const nextTarget = resolveTarget(target);
+        if (nextTarget.document !== currentDocumentRef.current) {
+          setNavigationVersion((version) => version + 1);
+        }
+      };
+      target.addEventListener("load", updateTarget);
+      return () => target.removeEventListener("load", updateTarget);
+    }
+  }, [target]);
+
+  return resolvedTarget;
+}
+
+function resolveTarget(target: SourceAnnotatorTarget | undefined): ResolvedTarget {
+  const hostDocument = typeof document === "undefined" ? null : document;
+
+  if (typeof HTMLIFrameElement !== "undefined" && target instanceof HTMLIFrameElement) {
+    const frameDocument = target.contentDocument;
+    if (!frameDocument) {
+      console.warn("@mikuexe/annotator-react: SourceAnnotator target iframe must be same-origin; iframe contentDocument is not accessible.");
+      return {
+        document: null,
+        frameElement: target,
+      };
+    }
+
+    return {
+      document: frameDocument,
+      frameElement: target,
+    };
+  }
+
+  if (typeof Document !== "undefined" && target instanceof Document) {
+    return {
+      document: target,
+      frameElement: null,
+    };
+  }
+
+  return {
+    document: hostDocument,
+    frameElement: null,
+  };
+}
+
+function isElement(target: EventTarget | null, ownerDocument: Document): target is Element {
+  const elementConstructor = ownerDocument.defaultView?.Element ?? Element;
+  return target instanceof elementConstructor;
 }
 
 function getPopoverStyle(rect: Rect): CSSProperties {

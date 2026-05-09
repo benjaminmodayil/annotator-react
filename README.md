@@ -45,12 +45,35 @@ type SourceAnnotatorProps = {
   enabled?: boolean;
   hotkey?: string; // default: "alt+a"
   output?: "markdown" | "json" | "both"; // default: "markdown"
+  target?: Document | HTMLIFrameElement | null; // default: document
   onCollect?: (payload: AnnotationCollection) => void;
   renderToaster?: boolean; // default: true
 };
 ```
 
 `onCollect(payload)` fires after the clipboard write succeeds.
+
+### Annotating same-origin iframes
+
+Pass a same-origin iframe element as `target` when the annotator UI lives in a parent shell but users need to select elements inside the framed app. The annotator listens inside the iframe document, captures the actual clicked element, and offsets highlights, pins, and popovers into the parent viewport.
+
+```tsx
+import { useState } from "react";
+import { SourceAnnotator } from "@mikuexe/annotator-react";
+
+export function ReviewShell() {
+  const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+
+  return (
+    <>
+      <iframe ref={setIframe} src="/prototype/" />
+      <SourceAnnotator target={iframe} />
+    </>
+  );
+}
+```
+
+The iframe must be same-origin so the browser allows access to `iframe.contentDocument`. Cross-origin iframes cannot expose their internal DOM to the parent page.
 
 ### Sonner toaster ownership
 

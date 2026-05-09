@@ -28,10 +28,13 @@ export type AnnotationCollection = {
 
 export type SourceAnnotatorOutput = "markdown" | "json" | "both";
 
+export type SourceAnnotatorTarget = Document | HTMLIFrameElement | null;
+
 export type SourceAnnotatorProps = {
   enabled?: boolean;
   hotkey?: string;
   output?: SourceAnnotatorOutput;
+  target?: SourceAnnotatorTarget;
   onCollect?: (payload: AnnotationCollection) => void;
   renderToaster?: boolean;
 };
