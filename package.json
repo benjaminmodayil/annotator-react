@@ -4,7 +4,7 @@
   "description": "React overlay for source-aware UI annotations copied into coding agents.",
   "type": "module",
   "license": "MIT",
-  "author": "Benjamin Modayil",
+  "author": "mikuexe",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mikuexe/annotator-react.git"
@@ -72,6 +72,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "npm run check:all && changeset publish",
+    "changeset:check": "node scripts/check-changeset.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check:all"
   },
