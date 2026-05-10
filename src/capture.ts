@@ -1,5 +1,5 @@
 import { resolveElementInfo } from "element-source";
-import type { Annotation, AnnotationSource } from "./types";
+import type { Annotation, AnnotationSource, AnnotationTarget } from "./types";
 
 const MAX_TEXT_LENGTH = 240;
 const MAX_HTML_LENGTH = 640;
@@ -10,14 +10,20 @@ export async function captureElementAnnotation(
   note: string,
   id = createAnnotationId(),
 ): Promise<Annotation> {
+  return {
+    id,
+    note,
+    targets: [await captureAnnotationTarget(element)],
+  };
+}
+
+export async function captureAnnotationTarget(element: Element): Promise<AnnotationTarget> {
   const elementInfo = await safeResolveElementInfo(element);
   const source = normalizeSource(elementInfo?.source, elementInfo?.componentName);
   const sourceStack = normalizeSourceStack(elementInfo?.stack, source);
   const componentPath = getComponentPath(sourceStack, source);
 
   return {
-    id,
-    note,
     source,
     sourceStack,
     componentPath,

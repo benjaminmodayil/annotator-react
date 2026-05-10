@@ -4,31 +4,39 @@ import type { AnnotationCollection } from "../types";
 
 const collection: AnnotationCollection = {
   createdAt: "2026-04-25T00:00:00.000Z",
+  page: {
+    domain: "example.com",
+    path: "/products/widget",
+  },
   annotations: [
     {
       id: "ann-1",
       note: "Make this CTA more prominent.",
-      source: {
-        filePath: "src/App.tsx",
-        lineNumber: 42,
-        columnNumber: 7,
-        componentName: "Hero",
-      },
-      sourceStack: [
+      targets: [
         {
-          filePath: "src/App.tsx",
-          lineNumber: 42,
-          columnNumber: 7,
-          componentName: "Hero",
+          source: {
+            filePath: "src/App.tsx",
+            lineNumber: 42,
+            columnNumber: 7,
+            componentName: "Hero",
+          },
+          sourceStack: [
+            {
+              filePath: "src/App.tsx",
+              lineNumber: 42,
+              columnNumber: 7,
+              componentName: "Hero",
+            },
+          ],
+          componentPath: ["Hero", "App"],
+          element: {
+            tagName: "button",
+            text: "Start now",
+            html: "<button>Start now</button>",
+            selector: "#root main section button",
+          },
         },
       ],
-      componentPath: ["Hero", "App"],
-      element: {
-        tagName: "button",
-        text: "Start now",
-        html: "<button>Start now</button>",
-        selector: "#root main section button",
-      },
     },
   ],
 };
@@ -39,6 +47,8 @@ describe("formatAnnotationCollection", () => {
 
     expect(output).toContain("Please update the UI based on these source-linked annotations.");
     expect(output).toContain("Collected at: 2026-04-25T00:00:00.000Z");
+    expect(output).toContain("Domain: example.com");
+    expect(output).toContain("Path: /products/widget");
     expect(output).toContain("## Annotation 1");
     expect(output).toContain("ID: ann-1");
     expect(output).toContain("Note: Make this CTA more prominent.");
@@ -61,7 +71,12 @@ describe("formatAnnotationCollection", () => {
         annotations: [
           {
             ...collection.annotations[0],
-            componentPath: ["Hero"],
+            targets: [
+              {
+                ...collection.annotations[0].targets[0],
+                componentPath: ["Hero"],
+              },
+            ],
           },
         ],
       },
@@ -72,23 +87,63 @@ describe("formatAnnotationCollection", () => {
     expect(output).not.toContain("React owner path: Hero");
   });
 
+  it("formats multiple linked targets under one note", () => {
+    const output = formatAnnotationCollection(
+      {
+        ...collection,
+        annotations: [
+          {
+            ...collection.annotations[0],
+            targets: [
+              collection.annotations[0].targets[0],
+              {
+                source: null,
+                sourceStack: [],
+                componentPath: [],
+                element: {
+                  tagName: "a",
+                  text: "Learn more",
+                  html: '<a href="/learn">Learn more</a>',
+                  selector: "footer a",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      "markdown",
+    );
+
+    expect(output).toContain("Target 1 Source: src/App.tsx:42:7");
+    expect(output).toContain("Target 2 Element tag: a");
+    expect(output).toContain("Target 2 Selector: footer a");
+  });
+
   it("omits unavailable markdown fields", () => {
     const output = formatAnnotationCollection(
       {
         createdAt: "2026-04-25T00:00:00.000Z",
+        page: {
+          domain: "example.com",
+          path: "/",
+        },
         annotations: [
           {
             id: "ann-2",
             note: "No source here.",
-            source: null,
-            sourceStack: [],
-            componentPath: [],
-            element: {
-              tagName: "div",
-              text: "",
-              html: "<div></div>",
-              selector: "div",
-            },
+            targets: [
+              {
+                source: null,
+                sourceStack: [],
+                componentPath: [],
+                element: {
+                  tagName: "div",
+                  text: "",
+                  html: "<div></div>",
+                  selector: "div",
+                },
+              },
+            ],
           },
         ],
       },
@@ -107,6 +162,7 @@ describe("formatAnnotationCollection", () => {
     const output = formatAnnotationCollection(collection, "both");
 
     expect(output).toContain("## JSON Payload");
+    expect(output).toContain('"page"');
     expect(output).toContain('"annotations"');
   });
 

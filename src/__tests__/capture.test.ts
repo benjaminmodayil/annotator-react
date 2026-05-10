@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { captureElementAnnotation, getElementSelector, trimText } from "../capture";
+import { captureAnnotationTarget, captureElementAnnotation, getElementSelector, trimText } from "../capture";
 
 const resolveElementInfo = vi.fn();
 
@@ -46,32 +46,53 @@ describe("captureElementAnnotation", () => {
     expect(annotation).toEqual({
       id: "ann-1",
       note: "Button copy should be shorter",
-      source: {
-        filePath: "src/App.tsx",
-        lineNumber: 12,
-        columnNumber: 5,
-        componentName: "Card",
-      },
-      sourceStack: [
+      targets: [
         {
-          filePath: "src/App.tsx",
-          lineNumber: 12,
-          columnNumber: 5,
-          componentName: "Card",
-        },
-        {
-          filePath: "src/App.tsx",
-          lineNumber: 4,
-          columnNumber: 1,
-          componentName: "App",
+          source: {
+            filePath: "src/App.tsx",
+            lineNumber: 12,
+            columnNumber: 5,
+            componentName: "Card",
+          },
+          sourceStack: [
+            {
+              filePath: "src/App.tsx",
+              lineNumber: 12,
+              columnNumber: 5,
+              componentName: "Card",
+            },
+            {
+              filePath: "src/App.tsx",
+              lineNumber: 4,
+              columnNumber: 1,
+              componentName: "App",
+            },
+          ],
+          componentPath: ["Card", "App"],
+          element: {
+            tagName: "button",
+            text: "Save changes",
+            html: "<button> Save changes </button>",
+            selector: "#root section button",
+          },
         },
       ],
-      componentPath: ["Card", "App"],
+    });
+  });
+
+  it("captures a single target directly", async () => {
+    resolveElementInfo.mockResolvedValue(null);
+    document.body.innerHTML = "<button>Target only</button>";
+
+    await expect(captureAnnotationTarget(document.querySelector("button")!)).resolves.toEqual({
+      source: null,
+      sourceStack: [],
+      componentPath: [],
       element: {
         tagName: "button",
-        text: "Save changes",
-        html: "<button> Save changes </button>",
-        selector: "#root section button",
+        text: "Target only",
+        html: "<button>Target only</button>",
+        selector: "body button",
       },
     });
   });
@@ -82,10 +103,10 @@ describe("captureElementAnnotation", () => {
 
     const annotation = await captureElementAnnotation(document.querySelector("button")!, "Needs source fallback", "ann-2");
 
-    expect(annotation.source).toBeNull();
-    expect(annotation.element.text).toBe("Broken source");
-    expect(annotation.sourceStack).toEqual([]);
-    expect(annotation.componentPath).toEqual([]);
+    expect(annotation.targets[0]?.source).toBeNull();
+    expect(annotation.targets[0]?.element.text).toBe("Broken source");
+    expect(annotation.targets[0]?.sourceStack).toEqual([]);
+    expect(annotation.targets[0]?.componentPath).toEqual([]);
   });
 });
 

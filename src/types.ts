@@ -12,18 +12,28 @@ export type AnnotationElement = {
   selector: string;
 };
 
-export type Annotation = {
-  id: string;
-  note: string;
+export type AnnotationTarget = {
   source: AnnotationSource | null;
   sourceStack: AnnotationSource[];
   componentPath: string[];
   element: AnnotationElement;
 };
 
+export type Annotation = {
+  id: string;
+  note: string;
+  targets: AnnotationTarget[];
+};
+
+export type PageContext = {
+  domain: string;
+  path: string;
+};
+
 export type AnnotationCollection = {
   annotations: Annotation[];
   createdAt: string;
+  page: PageContext;
 };
 
 export type SourceAnnotatorOutput = "markdown" | "json" | "both";
