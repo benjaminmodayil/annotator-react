@@ -7,11 +7,11 @@
   "author": "mikuexe",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mikuexe/annotator-react.git"
+    "url": "git+https://github.com/benjaminmodayil/annotator-react.git"
   },
-  "homepage": "https://github.com/mikuexe/annotator-react#readme",
+  "homepage": "https://github.com/benjaminmodayil/annotator-react#readme",
   "bugs": {
-    "url": "https://github.com/mikuexe/annotator-react/issues"
+    "url": "https://github.com/benjaminmodayil/annotator-react/issues"
   },
   "keywords": [
     "react",
