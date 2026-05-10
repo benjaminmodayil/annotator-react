@@ -155,7 +155,7 @@ describe("SourceAnnotator", () => {
     expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
   });
 
-  it("reopens an annotation from its pin, previews it on hover, and updates without duplicating", async () => {
+  it("shows annotation content and edit/delete actions when hovering a pin", async () => {
     const target = document.createElement("button");
     target.textContent = "Target";
     target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 100, left: 50, width: 80, height: 30 }));
@@ -186,10 +186,13 @@ describe("SourceAnnotator", () => {
       pin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
 
-    expect(container.querySelector('[role="tooltip"]')?.textContent).toContain("Original note");
+    const popover = container.querySelector('[role="dialog"][aria-label="Annotation 1"]');
+    expect(popover?.textContent).toContain("Original note");
+    expect(getButtonByLabel(container, "Edit annotation 1").textContent).toBe("✎");
+    expect(getButtonByLabel(container, "Delete annotation 1").textContent).toBe("🗑");
 
     act(() => {
-      pin.click();
+      getButtonByLabel(container, "Edit annotation 1").click();
     });
 
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
@@ -208,6 +211,51 @@ describe("SourceAnnotator", () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.textContent).toContain("Updated note");
     expect(items[0]?.textContent).not.toContain("Original note");
+  });
+
+  it("deletes annotations from the pin popover and uses icon-only summary delete buttons", async () => {
+    const target = document.createElement("button");
+    target.textContent = "Target";
+    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 100, left: 50, width: 80, height: 30 }));
+    document.body.append(target);
+
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Target" }));
+
+    const container = renderAnnotator();
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    await clickTarget(target);
+
+    act(() => {
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Delete me");
+    });
+
+    await act(async () => {
+      getButton(container, "Save note").click();
+      await Promise.resolve();
+    });
+
+    const summaryDelete = getButtonByLabel(container, "Delete annotation 1");
+    expect(summaryDelete.textContent).toBe("🗑");
+    expect(summaryDelete.textContent).not.toContain("Delete annotation");
+
+    act(() => {
+      getButton(container, "1").dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+
+    const deleteButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-label="Delete annotation 1"]'));
+    expect(deleteButtons).toHaveLength(2);
+
+    act(() => {
+      deleteButtons[1]?.click();
+    });
+
+    expect(container.querySelectorAll("li")).toHaveLength(0);
+    expect(container.textContent).not.toContain("Delete me");
+    expect(container.textContent).toContain("Hover an element, click it, then add a note.");
   });
 
   it("supports modifier-click multi-select for one note", async () => {
@@ -488,6 +536,16 @@ function getButton(container: Element, text: string): HTMLButtonElement {
 
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error(`Button not found: ${text}`);
+  }
+
+  return button;
+}
+
+function getButtonByLabel(container: Element, label: string): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.getAttribute("aria-label") === label);
+
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Button not found by label: ${label}`);
   }
 
   return button;
