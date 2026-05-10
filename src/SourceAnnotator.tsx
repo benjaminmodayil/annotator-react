@@ -369,8 +369,29 @@ export function SourceAnnotator({
       window.removeEventListener("resize", refreshTrackedRects);
     };
   }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
+  useEffect(() => {
+    if (!previewedAnnotation) {
+      return;
+    }
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewedAnnotation(null);
+      }
+    };
 
+    document.addEventListener("keydown", onKeyDown);
+    if (resolvedTarget.document && resolvedTarget.document !== document) {
+      resolvedTarget.document.addEventListener("keydown", onKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (resolvedTarget.document && resolvedTarget.document !== document) {
+        resolvedTarget.document.removeEventListener("keydown", onKeyDown);
+      }
+    };
+  }, [previewedAnnotation, resolvedTarget.document]);
 
   const addAnnotation = useCallback(async () => {
     const current = selectedRef.current;
@@ -500,6 +521,7 @@ export function SourceAnnotator({
                 annotation={annotation}
                 rect={targetEntry.rect}
                 index={index}
+                isPreviewed={previewedAnnotation?.id === annotation.id}
                 onPreview={setPreviewedAnnotation}
               />
             )),
@@ -511,6 +533,7 @@ export function SourceAnnotator({
           index={annotations.findIndex((annotation) => annotation.id === previewedAnnotation.id)}
           onEdit={editAnnotation}
           onDelete={deleteAnnotation}
+          onClose={() => setPreviewedAnnotation(null)}
         />
       ) : null}
 
@@ -601,11 +624,13 @@ function Pin({
   annotation,
   rect,
   index,
+  isPreviewed,
   onPreview,
 }: {
   annotation: StoredAnnotation;
   rect: Rect;
   index: number;
+  isPreviewed: boolean;
   onPreview: (annotation: StoredAnnotation) => void;
 }) {
   return (
@@ -614,6 +639,8 @@ function Pin({
       style={{ ...styles.pin, top: Math.max(8, rect.top - 10), left: Math.max(8, rect.left - 10) }}
       title={annotation.note}
       aria-label={`Show annotation ${index + 1}`}
+      aria-haspopup="dialog"
+      aria-expanded={isPreviewed}
       onClick={() => onPreview(annotation)}
       onMouseOver={() => onPreview(annotation)}
       onFocus={() => onPreview(annotation)}
@@ -628,11 +655,13 @@ function AnnotationPreview({
   index,
   onEdit,
   onDelete,
+  onClose,
 }: {
   annotation: StoredAnnotation;
   index: number;
   onEdit: (annotation: StoredAnnotation) => void;
   onDelete: (annotationId: string) => void;
+  onClose: () => void;
 }) {
   const displayIndex = index >= 0 ? index + 1 : 1;
 
@@ -645,6 +674,15 @@ function AnnotationPreview({
       <div style={styles.previewHeader}>
         <div style={styles.previewTitle}>Annotation {displayIndex}</div>
         <div style={styles.previewActions}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ ...styles.secondaryButton, ...styles.iconButton }}
+            aria-label={`Close annotation ${displayIndex}`}
+            title={`Close annotation ${displayIndex}`}
+          >
+            ×
+          </button>
           <button
             type="button"
             onClick={() => onEdit(annotation)}

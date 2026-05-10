@@ -181,15 +181,40 @@ describe("SourceAnnotator", () => {
     });
 
     const pin = getButton(container, "1");
+    expect(pin.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(pin.getAttribute("aria-expanded")).toBe("false");
 
     act(() => {
       pin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
 
+    expect(pin.getAttribute("aria-expanded")).toBe("true");
     const popover = container.querySelector('[role="dialog"][aria-label="Annotation 1"]');
     expect(popover?.textContent).toContain("Original note");
     expect(getButtonByLabel(container, "Edit annotation 1").textContent).toBe("✎");
     expect(getButtonByLabel(container, "Delete annotation 1").textContent).toBe("🗑");
+    expect(getButtonByLabel(container, "Close annotation 1").textContent).toBe("×");
+
+    act(() => {
+      getButtonByLabel(container, "Close annotation 1").click();
+    });
+
+    expect(container.querySelector('[role="dialog"][aria-label="Annotation 1"]')).toBeNull();
+    expect(pin.getAttribute("aria-expanded")).toBe("false");
+
+    act(() => {
+      pin.focus();
+    });
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="dialog"][aria-label="Annotation 1"]')).toBeNull();
+
+    act(() => {
+      pin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
 
     act(() => {
       getButtonByLabel(container, "Edit annotation 1").click();
