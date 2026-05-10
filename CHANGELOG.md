@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- 41c21a6: Clarify README positioning, upstream credit, and support expectations.
+
 ## 0.2.0
 
 ### Minor Changes
