@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Toaster, toast } from "sonner";
-import { captureAnnotationTarget, captureElementAnnotation } from "./capture";
+import { captureAnnotationTarget, captureElementAnnotation, createAnnotationId } from "./capture";
 import { copyTextToClipboard } from "./clipboard";
 import { createAnnotationCollection, formatAnnotationCollection, getPageContext } from "./format";
 import type {
@@ -804,14 +804,6 @@ function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {
 
 function isMac(): boolean {
   return typeof navigator !== "undefined" && /mac|iphone|ipad|ipod/i.test(navigator.platform);
-}
-
-function createAnnotationId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 const baseFont = '13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';

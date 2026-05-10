@@ -6,6 +6,7 @@ import { SourceAnnotator } from "../SourceAnnotator";
 const captureMocks = vi.hoisted(() => ({
   captureAnnotationTarget: vi.fn(),
   captureElementAnnotation: vi.fn(),
+  createAnnotationId: vi.fn(() => "ann-generated"),
 }));
 
 const clipboardMocks = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const sonnerMocks = vi.hoisted(() => ({
 vi.mock("../capture", () => ({
   captureAnnotationTarget: captureMocks.captureAnnotationTarget,
   captureElementAnnotation: captureMocks.captureElementAnnotation,
+  createAnnotationId: captureMocks.createAnnotationId,
 }));
 
 vi.mock("../clipboard", () => ({ copyTextToClipboard: clipboardMocks.copyTextToClipboard }));
@@ -50,6 +52,8 @@ describe("SourceAnnotator", () => {
     window.history.replaceState(null, "", "/");
     captureMocks.captureAnnotationTarget.mockReset();
     captureMocks.captureElementAnnotation.mockReset();
+    captureMocks.createAnnotationId.mockReset();
+    captureMocks.createAnnotationId.mockReturnValue("ann-generated");
     clipboardMocks.copyTextToClipboard.mockReset();
     sonnerMocks.toasterRender.mockClear();
     sonnerMocks.toastError.mockClear();
