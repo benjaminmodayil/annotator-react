@@ -38,6 +38,8 @@ createRoot(document.getElementById("root")!).render(
 
 Click **Annotate**, select an element, write a note, then click **Collect**.
 
+Desktop multi-select: while annotating, hold **Ctrl** (Windows/Linux) or **⌘ Cmd** (macOS) and click more elements to attach them to the same note. You can also use **Link element** on an existing annotation to attach one more element to that same comment.
+
 ## API
 
 ```ts
@@ -51,7 +53,7 @@ type SourceAnnotatorProps = {
 };
 ```
 
-`onCollect(payload)` fires after the clipboard write succeeds.
+`onCollect(payload)` fires after the clipboard write succeeds. The payload includes collection-level page context as `page: { domain, path }`.
 
 ### Annotating same-origin iframes
 
@@ -106,6 +108,8 @@ Example copied Markdown:
 Please update the UI based on these source-linked annotations.
 
 Collected at: 2026-04-25T00:00:00.000Z
+Domain: example.com
+Path: /prototype
 
 ## Annotation 1
 
@@ -126,16 +130,16 @@ Selector: #root main.app-shell section.hero button.primary-cta:nth-of-type(1)
 ## Captured data
 
 ```ts
-type Annotation = {
-  id: string;
-  note: string;
-  source: {
-    filePath: string;
-    lineNumber: number | null;
-    columnNumber: number | null;
-    componentName: string | null;
-  } | null;
-  sourceStack: Annotation["source"][];
+type AnnotationSource = {
+  filePath: string;
+  lineNumber: number | null;
+  columnNumber: number | null;
+  componentName: string | null;
+};
+
+type AnnotationTarget = {
+  source: AnnotationSource | null;
+  sourceStack: AnnotationSource[];
   componentPath: string[];
   element: {
     tagName: string;
@@ -144,13 +148,28 @@ type Annotation = {
     selector: string;
   };
 };
+
+type Annotation = {
+  id: string;
+  note: string;
+  targets: AnnotationTarget[];
+};
+
+type AnnotationCollection = {
+  createdAt: string;
+  page: {
+    domain: string;
+    path: string;
+  };
+  annotations: Annotation[];
+};
 ```
 
 ## How source capture works
 
 `@mikuexe/annotator-react/register` installs the React DevTools hook through `bippy/install-hook-only`. `element-source` then uses React ownership data to resolve selected DOM elements back to React components/source.
 
-If source resolution fails, annotations still include DOM context: tag, HTML, text, selector, and any nearest React component/owner path that could be resolved.
+If source resolution fails, annotations still include DOM context: tag, HTML, text, selector, and any nearest React component/owner path that could be resolved. Copied/exported payloads contain only serializable data and never internal DOM references.
 
 ## Local example
 

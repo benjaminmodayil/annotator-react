@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Toaster, toast } from "sonner";
-import { captureElementAnnotation } from "./capture";
+import { captureAnnotationTarget, captureElementAnnotation } from "./capture";
 import { copyTextToClipboard } from "./clipboard";
-import { createAnnotationCollection, formatAnnotationCollection } from "./format";
-import type { Annotation, SourceAnnotatorOutput, SourceAnnotatorProps, SourceAnnotatorTarget } from "./types";
+import { createAnnotationCollection, formatAnnotationCollection, getPageContext } from "./format";
+import type {
+  Annotation,
+  AnnotationTarget,
+  SourceAnnotatorOutput,
+  SourceAnnotatorProps,
+  SourceAnnotatorTarget,
+} from "./types";
 
 type Rect = {
   top: number;
@@ -13,19 +19,30 @@ type Rect = {
   height: number;
 };
 
-type SelectedElement = {
+type DraftTarget = {
   element: Element;
   rect: Rect;
   frameElement: HTMLIFrameElement | null;
-  annotation: Annotation | null;
+  target: AnnotationTarget | null;
   loading: boolean;
+};
+
+type DraftSelection = {
+  targets: DraftTarget[];
   editingId?: string;
 };
 
-type StoredAnnotation = Annotation & {
+type StoredTarget = {
   targetElement: Element;
   rect: Rect;
   frameElement: HTMLIFrameElement | null;
+  data: AnnotationTarget;
+};
+
+type StoredAnnotation = {
+  id: string;
+  note: string;
+  targets: StoredTarget[];
 };
 
 type ResolvedTarget = {
@@ -58,12 +75,13 @@ export function SourceAnnotator({
 }: SourceAnnotatorProps) {
   const [isAnnotating, setIsAnnotating] = useState(false);
   const [hoverRect, setHoverRect] = useState<Rect | null>(null);
-  const [selected, setSelected] = useState<SelectedElement | null>(null);
+  const [selected, setSelected] = useState<DraftSelection | null>(null);
   const [note, setNote] = useState("");
   const [annotations, setAnnotations] = useState<StoredAnnotation[]>([]);
   const [previewedAnnotation, setPreviewedAnnotation] = useState<StoredAnnotation | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const selectedRef = useRef<SelectedElement | null>(null);
+  const [linkingAnnotationId, setLinkingAnnotationId] = useState<string | null>(null);
+  const selectedRef = useRef<DraftSelection | null>(null);
 
   const resolvedTarget = useResolvedTarget(target);
 
@@ -75,21 +93,31 @@ export function SourceAnnotator({
     setAnnotations([]);
     setPreviewedAnnotation(null);
     setNote("");
+    setStatus(null);
+    setLinkingAnnotationId(null);
   }, [resolvedTarget.document, resolvedTarget.frameElement]);
-
-  const collection = useMemo(
-    () =>
-      createAnnotationCollection(
-        annotations.map(({ rect: _rect, targetElement: _targetElement, frameElement: _frameElement, ...annotation }) => annotation),
-      ),
-    [annotations],
-  );
 
   const refreshTrackedRects = useCallback(() => {
     setHoverRect(null);
-    setSelected((current) => (current ? { ...current, rect: getRect(current.element, current.frameElement) } : current));
+    setSelected((current) =>
+      current
+        ? {
+            ...current,
+            targets: current.targets.map((targetEntry) => ({
+              ...targetEntry,
+              rect: getRect(targetEntry.element, targetEntry.frameElement),
+            })),
+          }
+        : current,
+    );
     setAnnotations((existing) =>
-      existing.map((annotation) => ({ ...annotation, rect: getRect(annotation.targetElement, annotation.frameElement) })),
+      existing.map((annotation) => ({
+        ...annotation,
+        targets: annotation.targets.map((targetEntry) => ({
+          ...targetEntry,
+          rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
+        })),
+      })),
     );
   }, []);
 
@@ -125,6 +153,141 @@ export function SourceAnnotator({
       }
     };
   }, [enabled, hotkey, resolvedTarget.document]);
+
+  const handleElementSelection = useCallback(
+    async (eventTarget: Element, frameElement: HTMLIFrameElement | null, extendSelection: boolean) => {
+      if (linkingAnnotationId) {
+        const rect = getRect(eventTarget, frameElement);
+        setStatus("Resolving linked element…");
+
+        try {
+          const targetData = await captureAnnotationTarget(eventTarget);
+          setAnnotations((existing) =>
+            existing.map((annotation) => {
+              if (annotation.id !== linkingAnnotationId) {
+                return annotation;
+              }
+
+              if (annotation.targets.some((targetEntry) => targetEntry.targetElement === eventTarget)) {
+                return annotation;
+              }
+
+              return {
+                ...annotation,
+                targets: [
+                  ...annotation.targets,
+                  {
+                    targetElement: eventTarget,
+                    rect,
+                    frameElement,
+                    data: targetData,
+                  },
+                ],
+              };
+            }),
+          );
+          setLinkingAnnotationId(null);
+          setPreviewedAnnotation(null);
+          setStatus("Element linked to annotation.");
+        } catch {
+          setStatus("Element linked without source info.");
+          setAnnotations((existing) =>
+            existing.map((annotation) => {
+              if (annotation.id !== linkingAnnotationId) {
+                return annotation;
+              }
+
+              if (annotation.targets.some((targetEntry) => targetEntry.targetElement === eventTarget)) {
+                return annotation;
+              }
+
+              return {
+                ...annotation,
+                targets: [
+                  ...annotation.targets,
+                  {
+                    targetElement: eventTarget,
+                    rect,
+                    frameElement,
+                    data: {
+                      source: null,
+                      sourceStack: [],
+                      componentPath: [],
+                      element: {
+                        tagName: eventTarget.tagName.toLowerCase(),
+                        text: eventTarget.textContent?.trim() ?? "",
+                        html: "",
+                        selector: "",
+                      },
+                    },
+                  },
+                ],
+              };
+            }),
+          );
+          setLinkingAnnotationId(null);
+        }
+
+        return;
+      }
+
+      const rect = getRect(eventTarget, frameElement);
+      const shouldAppend = extendSelection && Boolean(selectedRef.current) && !selectedRef.current?.editingId;
+      setSelected((current) => {
+        if (shouldAppend && current) {
+          if (current.targets.some((targetEntry) => targetEntry.element === eventTarget)) {
+            return current;
+          }
+
+          return {
+            ...current,
+            targets: [...current.targets, { element: eventTarget, rect, frameElement, target: null, loading: true }],
+          };
+        }
+
+        return {
+          targets: [{ element: eventTarget, rect, frameElement, target: null, loading: true }],
+        };
+      });
+
+      if (!shouldAppend) {
+        setNote("");
+      }
+      setStatus("Resolving source…");
+
+      try {
+        const targetData = await captureAnnotationTarget(eventTarget);
+        setSelected((current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            targets: current.targets.map((targetEntry) =>
+              targetEntry.element === eventTarget ? { ...targetEntry, target: targetData, loading: false } : targetEntry,
+            ),
+          };
+        });
+        setStatus(targetData.source ? "Source captured." : "Element captured without source info.");
+      } catch {
+        setSelected((current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            targets: current.targets.map((targetEntry) =>
+              targetEntry.element === eventTarget ? { ...targetEntry, loading: false } : targetEntry,
+            ),
+          };
+        });
+        setStatus("Element captured without source info.");
+      }
+    },
+    [linkingAnnotationId],
+  );
 
   useEffect(() => {
     if (!enabled || !isAnnotating || !resolvedTarget.document) {
@@ -165,26 +328,7 @@ export function SourceAnnotator({
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      const rect = getRect(eventTarget, resolvedTarget.frameElement);
-      setSelected({ element: eventTarget, rect, frameElement: resolvedTarget.frameElement, annotation: null, loading: true });
-      setNote("");
-      setStatus("Resolving source…");
-
-      captureElementAnnotation(eventTarget, "")
-        .then((annotation) => {
-          setSelected((current) => {
-            if (current?.element !== eventTarget) {
-              return current;
-            }
-
-            return { ...current, annotation, loading: false };
-          });
-          setStatus(annotation.source ? "Source captured." : "Element captured without source info.");
-        })
-        .catch(() => {
-          setSelected((current) => (current?.element === eventTarget ? { ...current, loading: false } : current));
-          setStatus("Element captured without source info.");
-        });
+      void handleElementSelection(eventTarget, resolvedTarget.frameElement, shouldExtendSelection(event));
     };
 
     const onFramePointerLeave = () => {
@@ -202,7 +346,7 @@ export function SourceAnnotator({
       BLOCKED_INTERACTION_EVENTS.forEach((eventName) => activeDocument.removeEventListener(eventName, suppressInteraction, true));
       resolvedTarget.frameElement?.removeEventListener("pointerleave", onFramePointerLeave);
     };
-  }, [enabled, isAnnotating, resolvedTarget]);
+  }, [enabled, handleElementSelection, isAnnotating, resolvedTarget]);
 
   useEffect(() => {
     if (!enabled || !isAnnotating || !resolvedTarget.document) {
@@ -226,9 +370,11 @@ export function SourceAnnotator({
     };
   }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
 
+
+
   const addAnnotation = useCallback(async () => {
     const current = selectedRef.current;
-    if (!current || current.loading) {
+    if (!current || current.targets.some((targetEntry) => targetEntry.loading)) {
       return;
     }
 
@@ -238,15 +384,26 @@ export function SourceAnnotator({
       return;
     }
 
-    const annotation = current.annotation
-      ? { ...current.annotation, note: trimmedNote }
-      : await captureElementAnnotation(current.element, trimmedNote);
+    const currentTargets = await Promise.all(
+      current.targets.map(async (targetEntry) => {
+        if (targetEntry.target) {
+          return targetEntry;
+        }
 
-    const storedAnnotation = {
-      ...annotation,
-      targetElement: current.element,
-      rect: getRect(current.element, current.frameElement),
-      frameElement: current.frameElement,
+        const annotation = await captureElementAnnotation(targetEntry.element, trimmedNote);
+        return { ...targetEntry, target: annotation.targets[0], loading: false };
+      }),
+    );
+
+    const storedAnnotation: StoredAnnotation = {
+      id: current.editingId ?? createAnnotationId(),
+      note: trimmedNote,
+      targets: currentTargets.map((targetEntry) => ({
+        targetElement: targetEntry.element,
+        rect: getRect(targetEntry.element, targetEntry.frameElement),
+        frameElement: targetEntry.frameElement,
+        data: targetEntry.target as AnnotationTarget,
+      })),
     };
 
     setAnnotations((existing) => {
@@ -263,30 +420,39 @@ export function SourceAnnotator({
   }, [note]);
 
   const editAnnotation = useCallback((annotation: StoredAnnotation) => {
+    setLinkingAnnotationId(null);
     setSelected({
-      element: annotation.targetElement,
-      rect: getRect(annotation.targetElement, annotation.frameElement),
-      frameElement: annotation.frameElement,
-      annotation,
-      loading: false,
       editingId: annotation.id,
+      targets: annotation.targets.map((targetEntry) => ({
+        element: targetEntry.targetElement,
+        rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
+        frameElement: targetEntry.frameElement,
+        target: targetEntry.data,
+        loading: false,
+      })),
     });
     setNote(annotation.note);
     setPreviewedAnnotation(null);
     setStatus("Editing annotation.");
   }, []);
 
+  const startLinkingAnnotation = useCallback((annotationId: string) => {
+    setSelected(null);
+    setPreviewedAnnotation(null);
+    setLinkingAnnotationId(annotationId);
+    setStatus("Click another element to link it to this annotation.");
+  }, []);
+
   const deleteAnnotation = useCallback((annotationId: string) => {
     setAnnotations((existing) => existing.filter((annotation) => annotation.id !== annotationId));
     setSelected((current) => (current?.editingId === annotationId ? null : current));
     setPreviewedAnnotation((current) => (current?.id === annotationId ? null : current));
+    setLinkingAnnotationId((current) => (current === annotationId ? null : current));
     setStatus("Annotation deleted.");
   }, []);
 
   const collect = useCallback(async () => {
-    const payload = createAnnotationCollection(
-      annotations.map(({ rect: _rect, targetElement: _targetElement, frameElement: _frameElement, ...annotation }) => annotation),
-    );
+    const payload = createAnnotationCollection(stripStoredAnnotations(annotations), getPageContext(resolvedTarget.document));
     const text = formatAnnotationCollection(payload, output);
 
     try {
@@ -299,12 +465,13 @@ export function SourceAnnotator({
       setPreviewedAnnotation(null);
       setNote("");
       setStatus(null);
+      setLinkingAnnotationId(null);
       toast.success("Annotations copied", { description: `${payload.annotations.length} copied to clipboard.` });
     } catch (error) {
       toast.error("Copy failed", { description: error instanceof Error ? error.message : "Clipboard copy failed." });
       setStatus(error instanceof Error ? error.message : "Clipboard copy failed.");
     }
-  }, [annotations, onCollect, output]);
+  }, [annotations, onCollect, output, resolvedTarget.document]);
 
   if (!enabled) {
     return null;
@@ -324,25 +491,28 @@ export function SourceAnnotator({
       </button>
 
       {isAnnotating && hoverRect ? <Box rect={hoverRect} kind="hover" /> : null}
-      {selected ? <Box rect={selected.rect} kind="selected" /> : null}
+      {selected?.targets.map((targetEntry, index) => <Box key={index} rect={targetEntry.rect} kind="selected" />)}
       {isAnnotating
-        ? annotations.map((annotation, index) => (
-            <Pin
-              key={annotation.id}
-              annotation={annotation}
-              index={index}
-              onEdit={editAnnotation}
-              onPreview={setPreviewedAnnotation}
-              onPreviewEnd={() => setPreviewedAnnotation(null)}
-            />
-          ))
+        ? annotations.map((annotation, index) =>
+            annotation.targets.map((targetEntry, targetIndex) => (
+              <Pin
+                key={`${annotation.id}:${targetIndex}`}
+                annotation={annotation}
+                rect={targetEntry.rect}
+                index={index}
+                onEdit={editAnnotation}
+                onPreview={setPreviewedAnnotation}
+                onPreviewEnd={() => setPreviewedAnnotation(null)}
+              />
+            )),
+          )
         : null}
       {isAnnotating && previewedAnnotation ? <AnnotationPreview annotation={previewedAnnotation} /> : null}
 
-      {selected ? (
-        <div style={getPopoverStyle(selected.rect)} role="dialog" aria-label="Add source annotation">
+      {selected?.targets.length ? (
+        <div style={getPopoverStyle(selected.targets[selected.targets.length - 1].rect)} role="dialog" aria-label="Add source annotation">
           <div style={styles.popoverTitle}>Annotation</div>
-          <div style={styles.metaText}>{selected.loading ? "Resolving source…" : formatSelectedSource(selected.annotation)}</div>
+          <div style={styles.metaText}>{formatSelectedTargets(selected.targets)}</div>
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
@@ -355,7 +525,7 @@ export function SourceAnnotator({
             <button type="button" onClick={() => setSelected(null)} style={styles.secondaryButton}>
               Cancel
             </button>
-            <button type="button" onClick={addAnnotation} style={styles.primaryButton} disabled={selected.loading}>
+            <button type="button" onClick={addAnnotation} style={styles.primaryButton} disabled={selected.targets.some((targetEntry) => targetEntry.loading)}>
               {selected.editingId ? "Update note" : "Save note"}
             </button>
           </div>
@@ -366,7 +536,7 @@ export function SourceAnnotator({
         <section style={styles.panel} aria-label="Collected annotations">
           <div style={styles.panelHeader}>
             <strong>Annotations</strong>
-            <span style={styles.badge}>{collection.annotations.length}</span>
+            <span style={styles.badge}>{annotations.length}</span>
           </div>
           {annotations.length ? (
             <ol style={styles.annotationList}>
@@ -374,15 +544,16 @@ export function SourceAnnotator({
                 <li key={annotation.id} style={styles.annotationItem}>
                   <div style={styles.annotationContent}>
                     <div style={styles.noteText}>{annotation.note}</div>
-                    <div style={styles.metaText}>{formatSelectedSource(annotation)}</div>
+                    <div style={styles.metaText}>{formatStoredAnnotationSummary(annotation)}</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteAnnotation(annotation.id)}
-                    style={styles.deleteButton}
-                  >
-                    Delete annotation {index + 1}
-                  </button>
+                  <div style={styles.annotationActions}>
+                    <button type="button" onClick={() => startLinkingAnnotation(annotation.id)} style={styles.linkButton}>
+                      Link element
+                    </button>
+                    <button type="button" onClick={() => deleteAnnotation(annotation.id)} style={styles.deleteButton}>
+                      Delete annotation {index + 1}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ol>
@@ -417,12 +588,14 @@ function Box({ rect, kind }: { rect: Rect; kind: "hover" | "selected" }) {
 
 function Pin({
   annotation,
+  rect,
   index,
   onEdit,
   onPreview,
   onPreviewEnd,
 }: {
   annotation: StoredAnnotation;
+  rect: Rect;
   index: number;
   onEdit: (annotation: StoredAnnotation) => void;
   onPreview: (annotation: StoredAnnotation) => void;
@@ -431,7 +604,7 @@ function Pin({
   return (
     <button
       type="button"
-      style={{ ...styles.pin, top: Math.max(8, annotation.rect.top - 10), left: Math.max(8, annotation.rect.left - 10) }}
+      style={{ ...styles.pin, top: Math.max(8, rect.top - 10), left: Math.max(8, rect.left - 10) }}
       title={annotation.note}
       aria-label={`Edit annotation ${index + 1}`}
       onClick={() => onEdit(annotation)}
@@ -447,11 +620,19 @@ function Pin({
 
 function AnnotationPreview({ annotation }: { annotation: StoredAnnotation }) {
   return (
-    <div role="tooltip" style={getPreviewStyle(annotation.rect)}>
+    <div role="tooltip" style={getPreviewStyle(annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 })}>
       <div style={styles.noteText}>{annotation.note}</div>
-      <div style={styles.metaText}>{formatSelectedSource(annotation)}</div>
+      <div style={styles.metaText}>{formatStoredAnnotationSummary(annotation)}</div>
     </div>
   );
+}
+
+function stripStoredAnnotations(annotations: StoredAnnotation[]): Annotation[] {
+  return annotations.map((annotation) => ({
+    id: annotation.id,
+    note: annotation.note,
+    targets: annotation.targets.map((targetEntry) => targetEntry.data),
+  }));
 }
 
 function getAnnotatableTarget(target: EventTarget | null, ownerDocument: Document): Element | null {
@@ -563,20 +744,44 @@ function getPreviewStyle(rect: Rect): CSSProperties {
   };
 }
 
-function formatSelectedSource(annotation: Annotation | null): string {
-  const componentPath = annotation?.componentPath.length ? annotation.componentPath.join(" › ") : null;
-
-  if (!annotation) {
+function formatSelectedTargets(targets: DraftTarget[]): string {
+  if (!targets.length) {
     return "Source unavailable";
   }
 
-  if (!annotation.source?.filePath) {
-    return `${annotation.element.selector} · source unavailable`;
+  if (targets.length === 1) {
+    return formatTargetSource(targets[0].target);
   }
 
-  const line = annotation.source.lineNumber ? `:${annotation.source.lineNumber}` : "";
+  const resolvedCount = targets.filter((targetEntry) => targetEntry.target).length;
+  return `${targets.length} elements selected · ${resolvedCount}/${targets.length} resolved`;
+}
+
+function formatStoredAnnotationSummary(annotation: StoredAnnotation): string {
+  const firstTarget = annotation.targets[0]?.data;
+  const targetSummary = formatTargetSource(firstTarget);
+  const linkedSummary = annotation.targets.length > 1 ? ` · ${annotation.targets.length} linked elements` : "";
+  return `${targetSummary}${linkedSummary}`;
+}
+
+function formatTargetSource(target: AnnotationTarget | null | undefined): string {
+  const componentPath = target?.componentPath.length ? target.componentPath.join(" › ") : null;
+
+  if (!target) {
+    return "Source unavailable";
+  }
+
+  if (!target.source?.filePath) {
+    return `${target.element.selector} · source unavailable`;
+  }
+
+  const line = target.source.lineNumber ? `:${target.source.lineNumber}` : "";
   const component = componentPath ? ` · ${componentPath}` : "";
-  return `${annotation.source.filePath}${line}${component}`;
+  return `${target.source.filePath}${line}${component}`;
+}
+
+function shouldExtendSelection(event: MouseEvent): boolean {
+  return event.metaKey || event.ctrlKey;
 }
 
 function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {
@@ -599,6 +804,14 @@ function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {
 
 function isMac(): boolean {
   return typeof navigator !== "undefined" && /mac|iphone|ipad|ipod/i.test(navigator.platform);
+}
+
+function createAnnotationId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `annotation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 const baseFont = '13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -741,13 +954,17 @@ const styles = {
   } satisfies CSSProperties,
   annotationItem: {
     display: "grid",
-    gridTemplateColumns: "1fr auto",
     gap: 8,
     alignItems: "start",
     marginBottom: 8,
   } satisfies CSSProperties,
   annotationContent: {
     minWidth: 0,
+  } satisfies CSSProperties,
+  annotationActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
   } satisfies CSSProperties,
   noteText: {
     color: "#0f172a",
@@ -772,6 +989,16 @@ const styles = {
     marginTop: 8,
     color: "#475569",
     fontSize: 12,
+  } satisfies CSSProperties,
+  linkButton: {
+    border: "1px solid #bfdbfe",
+    borderRadius: 999,
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    padding: "4px 7px",
+    fontSize: 11,
+    fontWeight: 750,
+    cursor: "pointer",
   } satisfies CSSProperties,
   deleteButton: {
     border: "1px solid #fecaca",

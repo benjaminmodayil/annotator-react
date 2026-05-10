@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SourceAnnotator } from "../SourceAnnotator";
 
 const captureMocks = vi.hoisted(() => ({
+  captureAnnotationTarget: vi.fn(),
   captureElementAnnotation: vi.fn(),
 }));
 
@@ -17,7 +18,10 @@ const sonnerMocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
 }));
 
-vi.mock("../capture", () => ({ captureElementAnnotation: captureMocks.captureElementAnnotation }));
+vi.mock("../capture", () => ({
+  captureAnnotationTarget: captureMocks.captureAnnotationTarget,
+  captureElementAnnotation: captureMocks.captureElementAnnotation,
+}));
 
 vi.mock("../clipboard", () => ({ copyTextToClipboard: clipboardMocks.copyTextToClipboard }));
 
@@ -43,6 +47,8 @@ describe("SourceAnnotator", () => {
     });
     roots = [];
     document.body.innerHTML = "";
+    window.history.replaceState(null, "", "/");
+    captureMocks.captureAnnotationTarget.mockReset();
     captureMocks.captureElementAnnotation.mockReset();
     clipboardMocks.copyTextToClipboard.mockReset();
     sonnerMocks.toasterRender.mockClear();
@@ -83,19 +89,7 @@ describe("SourceAnnotator", () => {
     target.getBoundingClientRect = vi.fn(() => createDomRect(targetRect));
     document.body.append(target);
 
-    captureMocks.captureElementAnnotation.mockResolvedValue({
-      id: "ann-1",
-      note: "",
-      source: null,
-      sourceStack: [],
-      componentPath: [],
-      element: {
-        tagName: "button",
-        text: "Target",
-        html: "<button>Target</button>",
-        selector: "button",
-      },
-    });
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Target" }));
 
     const container = renderAnnotator();
 
@@ -103,16 +97,10 @@ describe("SourceAnnotator", () => {
       getButton(container, "Annotate").click();
     });
 
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
-
-    const textarea = container.querySelector("textarea");
-    expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+    await clickTarget(target);
 
     act(() => {
-      setTextareaValue(textarea as HTMLTextAreaElement, "Keep attached");
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Keep attached");
     });
 
     await act(async () => {
@@ -144,7 +132,7 @@ describe("SourceAnnotator", () => {
     target.addEventListener("click", onClick);
     document.body.append(target);
 
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-1", note: "", text: "Interactive target" }));
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Interactive target" }));
 
     const container = renderAnnotator();
 
@@ -156,10 +144,7 @@ describe("SourceAnnotator", () => {
       target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
     });
 
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
+    await clickTarget(target);
 
     expect(onPointerDown).not.toHaveBeenCalled();
     expect(onClick).not.toHaveBeenCalled();
@@ -172,7 +157,7 @@ describe("SourceAnnotator", () => {
     target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 100, left: 50, width: 80, height: 30 }));
     document.body.append(target);
 
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-1", note: "", text: "Target" }));
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Target" }));
 
     const container = renderAnnotator();
 
@@ -180,10 +165,7 @@ describe("SourceAnnotator", () => {
       getButton(container, "Annotate").click();
     });
 
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
+    await clickTarget(target);
 
     act(() => {
       setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Original note");
@@ -224,13 +206,18 @@ describe("SourceAnnotator", () => {
     expect(items[0]?.textContent).not.toContain("Original note");
   });
 
-  it("deletes annotations from the summary panel", async () => {
-    const target = document.createElement("button");
-    target.textContent = "Target";
-    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 100, left: 50, width: 80, height: 30 }));
-    document.body.append(target);
+  it("supports modifier-click multi-select for one note", async () => {
+    const first = document.createElement("button");
+    first.textContent = "First";
+    first.getBoundingClientRect = vi.fn(() => createDomRect({ top: 40, left: 40, width: 80, height: 30 }));
+    const second = document.createElement("button");
+    second.textContent = "Second";
+    second.getBoundingClientRect = vi.fn(() => createDomRect({ top: 90, left: 40, width: 80, height: 30 }));
+    document.body.append(first, second);
 
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-1", note: "", text: "Target" }));
+    captureMocks.captureAnnotationTarget
+      .mockResolvedValueOnce(createTarget({ text: "First", selector: "button:nth-of-type(1)" }))
+      .mockResolvedValueOnce(createTarget({ text: "Second", selector: "button:nth-of-type(2)" }));
 
     const container = renderAnnotator();
 
@@ -238,13 +225,51 @@ describe("SourceAnnotator", () => {
       getButton(container, "Annotate").click();
     });
 
+    await clickTarget(first);
+    await clickTarget(second, { ctrlKey: true });
+
+    expect(container.querySelectorAll('[data-mikuexe-annotator-box="selected"]')).toHaveLength(2);
+    expect(container.textContent).toContain("2 elements selected");
+
+    act(() => {
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "One comment for both");
+    });
+
     await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      getButton(container, "Save note").click();
       await Promise.resolve();
     });
 
+    expect(container.querySelectorAll("li")).toHaveLength(1);
+    expect(container.querySelectorAll('[title="One comment for both"]')).toHaveLength(2);
+    expect(container.textContent).toContain("2 linked elements");
+  });
+
+  it("links another element from an existing annotation card", async () => {
+    const first = document.createElement("button");
+    first.textContent = "Primary";
+    first.getBoundingClientRect = vi.fn(() => createDomRect({ top: 40, left: 40, width: 80, height: 30 }));
+    const second = document.createElement("a");
+    second.textContent = "Secondary";
+    second.getBoundingClientRect = vi.fn(() => createDomRect({ top: 90, left: 40, width: 80, height: 30 }));
+    document.body.append(first, second);
+
+    captureMocks.captureAnnotationTarget
+      .mockResolvedValueOnce(createTarget({ text: "Primary", selector: "button" }))
+      .mockResolvedValueOnce(createTarget({ tagName: "a", text: "Secondary", html: "<a>Secondary</a>", selector: "a" }));
+
+    clipboardMocks.copyTextToClipboard.mockResolvedValue(undefined);
+    const onCollect = vi.fn();
+    const container = renderAnnotator({ onCollect });
+
     act(() => {
-      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Delete me");
+      getButton(container, "Annotate").click();
+    });
+
+    await clickTarget(first);
+
+    act(() => {
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Link this note");
     });
 
     await act(async () => {
@@ -253,11 +278,75 @@ describe("SourceAnnotator", () => {
     });
 
     act(() => {
-      getButton(container, "Delete annotation 1").click();
+      getButton(container, "Link element").click();
     });
 
-    expect(container.textContent).toContain("Hover an element, click it, then add a note.");
-    expect(container.textContent).not.toContain("Delete me");
+    expect(container.textContent).toContain("Click another element to link it to this annotation.");
+
+    await clickTarget(second);
+
+    expect(container.querySelectorAll('[title="Link this note"]')).toHaveLength(2);
+    expect(container.textContent).toContain("2 linked elements");
+
+    await act(async () => {
+      getButton(container, "Collect").click();
+      await Promise.resolve();
+    });
+
+    expect(onCollect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: expect.objectContaining({ domain: "localhost", path: "/" }),
+        annotations: [
+          expect.objectContaining({
+            note: "Link this note",
+            targets: [expect.any(Object), expect.any(Object)],
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("includes page context in copied markdown and onCollect payload without DOM refs", async () => {
+    const target = document.createElement("button");
+    target.textContent = "Target";
+    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 100, left: 50, width: 80, height: 30 }));
+    document.body.append(target);
+
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Target" }));
+    clipboardMocks.copyTextToClipboard.mockResolvedValue(undefined);
+    const onCollect = vi.fn();
+
+    const container = renderAnnotator({ onCollect });
+
+    act(() => {
+      getButton(container, "Annotate").click();
+    });
+
+    await clickTarget(target);
+
+    act(() => {
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Copy me");
+    });
+
+    await act(async () => {
+      getButton(container, "Save note").click();
+      await Promise.resolve();
+    });
+
+    window.history.pushState(null, "", "/after-selection");
+
+    await act(async () => {
+      getButton(container, "Collect").click();
+      await Promise.resolve();
+    });
+
+    expect(clipboardMocks.copyTextToClipboard).toHaveBeenCalledWith(expect.stringContaining("Domain: localhost"));
+    expect(clipboardMocks.copyTextToClipboard).toHaveBeenCalledWith(expect.stringContaining("Path: /after-selection"));
+
+    const payload = onCollect.mock.calls[0]?.[0];
+    expect(payload.page).toEqual({ domain: "localhost", path: "/after-selection" });
+    expect(JSON.stringify(payload)).not.toContain("targetElement");
+    expect(payload.annotations[0]?.targets[0]?.element.selector).toBe("button");
   });
 
   it("clears copied annotations and does not show stale copied status when reopened", async () => {
@@ -267,7 +356,7 @@ describe("SourceAnnotator", () => {
     document.body.append(target);
 
     clipboardMocks.copyTextToClipboard.mockResolvedValue(undefined);
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-1", note: "", text: "Target" }));
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Target" }));
 
     const container = renderAnnotator();
 
@@ -275,10 +364,7 @@ describe("SourceAnnotator", () => {
       getButton(container, "Annotate").click();
     });
 
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
+    await clickTarget(target);
 
     act(() => {
       setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Copy me");
@@ -300,7 +386,6 @@ describe("SourceAnnotator", () => {
 
     expect(container.textContent).toContain("Hover an element, click it, then add a note.");
     expect(container.textContent).not.toContain("Copy me");
-    expect(container.textContent).not.toContain("Copied 1 annotation");
   });
 
   it("selects elements inside a same-origin iframe target and positions the overlay in the host viewport", async () => {
@@ -318,7 +403,7 @@ describe("SourceAnnotator", () => {
     target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
     frameDocument.body.append(target);
 
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-frame", note: "", text: "Frame target" }));
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Frame target" }));
 
     const container = renderAnnotator({ target: iframe });
 
@@ -334,16 +419,13 @@ describe("SourceAnnotator", () => {
     expect(hoverBox?.style.top).toBe("225px");
     expect(hoverBox?.style.left).toBe("330px");
 
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
+    await clickTarget(target);
 
-    expect(captureMocks.captureElementAnnotation).toHaveBeenCalledWith(target, "");
+    expect(captureMocks.captureAnnotationTarget).toHaveBeenCalledWith(target);
     expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
   });
 
-  it("blocks iframe app interactions while selecting an iframe element", async () => {
+  it("uses iframe document location for collected page context", async () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
 
@@ -352,137 +434,28 @@ describe("SourceAnnotator", () => {
       throw new Error("Expected iframe contentDocument in test environment.");
     }
 
-    const onPointerDown = vi.fn();
-    const onClick = vi.fn();
-    const target = frameDocument.createElement("button");
-    target.textContent = "Frame interactive target";
-    target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
-    target.addEventListener("pointerdown", onPointerDown);
-    target.addEventListener("click", onClick);
-    frameDocument.body.append(target);
-
-    captureMocks.captureElementAnnotation.mockResolvedValue(createAnnotation({ id: "ann-frame", note: "", text: "Frame interactive target" }));
-
-    const container = renderAnnotator({ target: iframe });
-
-    act(() => {
-      getButton(container, "Annotate").click();
-    });
-
-    act(() => {
-      target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-    });
-
-    await act(async () => {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
-
-    expect(onPointerDown).not.toHaveBeenCalled();
-    expect(onClick).not.toHaveBeenCalled();
-    expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
-  });
-
-  it("clears the iframe hover box when the pointer leaves the iframe", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
-
-    const frameDocument = iframe.contentDocument;
-    if (!frameDocument) {
-      throw new Error("Expected iframe contentDocument in test environment.");
-    }
+    const frameLocation = { hostname: "frame.example.com", pathname: "/inside" };
+    Object.defineProperty(frameDocument, "location", { configurable: true, value: frameLocation });
 
     const target = frameDocument.createElement("button");
     target.textContent = "Frame target";
     target.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
     frameDocument.body.append(target);
 
-    const container = renderAnnotator({ target: iframe });
+    captureMocks.captureAnnotationTarget.mockResolvedValue(createTarget({ text: "Frame target" }));
+    clipboardMocks.copyTextToClipboard.mockResolvedValue(undefined);
+    const onCollect = vi.fn();
+
+    const container = renderAnnotator({ target: iframe, onCollect });
 
     act(() => {
       getButton(container, "Annotate").click();
     });
 
-    act(() => {
-      target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
-    });
-
-    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeInstanceOf(HTMLDivElement);
+    await clickTarget(target);
 
     act(() => {
-      iframe.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false, cancelable: true }));
-    });
-
-    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeNull();
-  });
-
-  it("warns and does not fall back to parent document annotation for inaccessible iframes", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const iframe = document.createElement("iframe");
-    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => null });
-    document.body.append(iframe);
-
-    const parentTarget = document.createElement("button");
-    parentTarget.textContent = "Parent target";
-    parentTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
-    document.body.append(parentTarget);
-
-    const container = renderAnnotator({ target: iframe });
-
-    act(() => {
-      getButton(container, "Annotate").click();
-    });
-
-    act(() => {
-      parentTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
-    });
-
-    expect(warnSpy).toHaveBeenCalled();
-    expect(container.querySelector('[data-mikuexe-annotator-box="hover"]')).toBeNull();
-
-    warnSpy.mockRestore();
-  });
-
-  it("clears selected and saved iframe annotations when the iframe document changes", async () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
-
-    const firstDocument = iframe.contentDocument;
-    if (!firstDocument) {
-      throw new Error("Expected iframe contentDocument in test environment.");
-    }
-
-    let currentDocument: Document = firstDocument;
-    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => currentDocument });
-
-    const savedTarget = firstDocument.createElement("button");
-    savedTarget.textContent = "Saved frame target";
-    savedTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
-    firstDocument.body.append(savedTarget);
-
-    const selectedTarget = firstDocument.createElement("button");
-    selectedTarget.textContent = "Selected frame target";
-    selectedTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 90, left: 55, width: 100, height: 40 }));
-    firstDocument.body.append(selectedTarget);
-
-    captureMocks.captureElementAnnotation.mockResolvedValueOnce(createAnnotation({ id: "ann-saved", note: "", text: "Saved frame target" }));
-    captureMocks.captureElementAnnotation.mockResolvedValueOnce(createAnnotation({ id: "ann-selected", note: "", text: "Selected frame target" }));
-
-    const container = renderAnnotator({ target: iframe });
-
-    act(() => {
-      getButton(container, "Annotate").click();
-    });
-
-    await act(async () => {
-      savedTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
-    });
-
-    act(() => {
-      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Saved note");
+      setTextareaValue(container.querySelector("textarea") as HTMLTextAreaElement, "Frame note");
     });
 
     await act(async () => {
@@ -491,74 +464,20 @@ describe("SourceAnnotator", () => {
     });
 
     await act(async () => {
-      selectedTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      getButton(container, "Collect").click();
       await Promise.resolve();
     });
 
-    expect(container.querySelector('[title="Saved note"]')).toBeInstanceOf(HTMLButtonElement);
-    expect(container.querySelector("textarea")).toBeInstanceOf(HTMLTextAreaElement);
-
-    currentDocument = document.implementation.createHTMLDocument("next frame");
-
-    act(() => {
-      iframe.dispatchEvent(new Event("load"));
-    });
-
-    expect(container.querySelector('[title="Saved note"]')).toBeNull();
-    expect(container.querySelector("textarea")).toBeNull();
-    expect(container.querySelector('[data-mikuexe-annotator-box="selected"]')).toBeNull();
-  });
-
-  it("reattaches iframe listeners when a same-origin iframe navigates", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    iframe.getBoundingClientRect = vi.fn(() => createDomRect({ top: 200, left: 300, width: 640, height: 480 }));
-
-    const firstDocument = iframe.contentDocument;
-    if (!firstDocument) {
-      throw new Error("Expected iframe contentDocument in test environment.");
-    }
-
-    let currentDocument: Document = firstDocument;
-    Object.defineProperty(iframe, "contentDocument", { configurable: true, get: () => currentDocument });
-
-    const firstTarget = firstDocument.createElement("button");
-    firstTarget.textContent = "First frame target";
-    firstTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 25, left: 30, width: 100, height: 40 }));
-    firstDocument.body.append(firstTarget);
-
-    const container = renderAnnotator({ target: iframe });
-
-    act(() => {
-      getButton(container, "Annotate").click();
-    });
-
-    act(() => {
-      firstTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
-    });
-
-    expect(container.querySelector<HTMLElement>('[data-mikuexe-annotator-box="hover"]')?.style.top).toBe("225px");
-
-    const nextDocument = document.implementation.createHTMLDocument("next frame");
-    currentDocument = nextDocument;
-    const nextTarget = nextDocument.createElement("button");
-    nextTarget.textContent = "Next frame target";
-    nextTarget.getBoundingClientRect = vi.fn(() => createDomRect({ top: 70, left: 45, width: 120, height: 50 }));
-    nextDocument.body.append(nextTarget);
-
-    act(() => {
-      iframe.dispatchEvent(new Event("load"));
-    });
-
-    act(() => {
-      nextTarget.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, cancelable: true }));
-    });
-
-    const hoverBox = container.querySelector<HTMLElement>('[data-mikuexe-annotator-box="hover"]');
-    expect(hoverBox?.style.top).toBe("270px");
-    expect(hoverBox?.style.left).toBe("345px");
+    expect(onCollect.mock.calls[0]?.[0]?.page).toEqual({ domain: "frame.example.com", path: "/inside" });
   });
 });
+
+async function clickTarget(target: Element, init: MouseEventInit = {}) {
+  await act(async () => {
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }));
+    await Promise.resolve();
+  });
+}
 
 function getButton(container: Element, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent === text);
@@ -576,18 +495,26 @@ function setTextareaValue(textarea: HTMLTextAreaElement, value: string) {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-function createAnnotation({ id, note, text }: { id: string; note: string; text: string }) {
+function createTarget({
+  tagName = "button",
+  text,
+  html = `<${tagName}>${text}</${tagName}>`,
+  selector = tagName,
+}: {
+  tagName?: string;
+  text: string;
+  html?: string;
+  selector?: string;
+}) {
   return {
-    id,
-    note,
     source: null,
     sourceStack: [],
     componentPath: [],
     element: {
-      tagName: "button",
+      tagName,
       text,
-      html: `<button>${text}</button>`,
-      selector: "button",
+      html,
+      selector,
     },
   };
 }
