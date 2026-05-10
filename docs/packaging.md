@@ -47,6 +47,7 @@ This repo uses Changesets plus GitHub Actions:
 - `npm run version-packages` applies pending changesets to `package.json`, `package-lock.json`, and `CHANGELOG.md`.
 - `npm run release` runs the full verification suite and publishes changed packages.
 - `.github/workflows/ci.yml` runs `npm run check:all` on PRs and `main` pushes.
+- `npm run changeset:check` runs in PR CI and fails package-facing changes that omit a changeset. Add the `no-changeset-needed` PR label only for false positives.
 - `.github/workflows/release.yml` opens/updates a Version Packages PR when changesets exist, then publishes to npm after that PR is merged.
 
 Typical PR flow:
@@ -59,6 +60,8 @@ npm run changeset
 
 Commit the generated `.changeset/*.md` file with the feature/fix. Pick:
 
+Agents can use the global `release-aware-pr` Pi skill to inspect the diff and write the changeset non-interactively before committing.
+
 - `patch` for bug fixes, docs/package polish, and small behavior improvements.
 - `minor` for new backwards-compatible features.
 - `major` for breaking API/import/package behavior.
@@ -66,8 +69,6 @@ Commit the generated `.changeset/*.md` file with the feature/fix. Pick:
 After merge to `main`, the Release workflow creates or updates a PR titled `chore: version packages`. Review that PR's `package.json`, `package-lock.json`, and `CHANGELOG.md`. Merging it triggers the publish path.
 
 The publish path is designed for npm Trusted Publishing with provenance. In the npm package settings, add this GitHub repository and workflow as a trusted publisher for `.github/workflows/release.yml`. The workflow sets `id-token: write` and `NPM_CONFIG_PROVENANCE=true`, so no long-lived `NPM_TOKEN` secret should be needed in GitHub.
-
-Keep the local `~/.npmrc` token only for manual emergency publishes.
 
 For the first local/manual publish, do **not** use provenance. npm provenance is generated only from supported CI providers, so local publishes fail with `Automatic provenance generation not supported for provider: null` if provenance is enabled.
 
@@ -85,9 +86,7 @@ If npm returns `E403 ... Two-factor authentication or granular access token with
   NPM_CONFIG_PROVENANCE=false npm publish --access public --otp=123456
   ```
 
-- Option B: create a granular npm access token with publish permission and **Bypass 2FA** enabled, put it in `~/.npmrc`, then retry the publish command.
-
-Trusted Publishing avoids this local-token requirement for future CI publishes.
+Trusted Publishing avoids long-lived local npm tokens for future CI publishes.
 
 ## Registry metadata checklist
 
