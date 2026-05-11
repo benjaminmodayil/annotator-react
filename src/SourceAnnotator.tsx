@@ -369,8 +369,29 @@ export function SourceAnnotator({
       window.removeEventListener("resize", refreshTrackedRects);
     };
   }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
+  useEffect(() => {
+    if (!previewedAnnotation) {
+      return;
+    }
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewedAnnotation(null);
+      }
+    };
 
+    document.addEventListener("keydown", onKeyDown);
+    if (resolvedTarget.document && resolvedTarget.document !== document) {
+      resolvedTarget.document.addEventListener("keydown", onKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (resolvedTarget.document && resolvedTarget.document !== document) {
+        resolvedTarget.document.removeEventListener("keydown", onKeyDown);
+      }
+    };
+  }, [previewedAnnotation, resolvedTarget.document]);
 
   const addAnnotation = useCallback(async () => {
     const current = selectedRef.current;
@@ -500,14 +521,21 @@ export function SourceAnnotator({
                 annotation={annotation}
                 rect={targetEntry.rect}
                 index={index}
-                onEdit={editAnnotation}
+                isPreviewed={previewedAnnotation?.id === annotation.id}
                 onPreview={setPreviewedAnnotation}
-                onPreviewEnd={() => setPreviewedAnnotation(null)}
               />
             )),
           )
         : null}
-      {isAnnotating && previewedAnnotation ? <AnnotationPreview annotation={previewedAnnotation} /> : null}
+      {isAnnotating && previewedAnnotation ? (
+        <AnnotationPreview
+          annotation={previewedAnnotation}
+          index={annotations.findIndex((annotation) => annotation.id === previewedAnnotation.id)}
+          onEdit={editAnnotation}
+          onDelete={deleteAnnotation}
+          onClose={() => setPreviewedAnnotation(null)}
+        />
+      ) : null}
 
       {selected?.targets.length ? (
         <div style={getPopoverStyle(selected.targets[selected.targets.length - 1].rect)} role="dialog" aria-label="Add source annotation">
@@ -550,8 +578,14 @@ export function SourceAnnotator({
                     <button type="button" onClick={() => startLinkingAnnotation(annotation.id)} style={styles.linkButton}>
                       Link element
                     </button>
-                    <button type="button" onClick={() => deleteAnnotation(annotation.id)} style={styles.deleteButton}>
-                      Delete annotation {index + 1}
+                    <button
+                      type="button"
+                      onClick={() => deleteAnnotation(annotation.id)}
+                      style={{ ...styles.deleteButton, ...styles.iconButton }}
+                      aria-label={`Delete annotation ${index + 1}`}
+                      title={`Delete annotation ${index + 1}`}
+                    >
+                      🗑
                     </button>
                   </div>
                 </li>
@@ -590,37 +624,85 @@ function Pin({
   annotation,
   rect,
   index,
-  onEdit,
+  isPreviewed,
   onPreview,
-  onPreviewEnd,
 }: {
   annotation: StoredAnnotation;
   rect: Rect;
   index: number;
-  onEdit: (annotation: StoredAnnotation) => void;
+  isPreviewed: boolean;
   onPreview: (annotation: StoredAnnotation) => void;
-  onPreviewEnd: () => void;
 }) {
   return (
     <button
       type="button"
       style={{ ...styles.pin, top: Math.max(8, rect.top - 10), left: Math.max(8, rect.left - 10) }}
       title={annotation.note}
-      aria-label={`Edit annotation ${index + 1}`}
-      onClick={() => onEdit(annotation)}
+      aria-label={`Show annotation ${index + 1}`}
+      aria-haspopup="dialog"
+      aria-expanded={isPreviewed}
+      onClick={() => onPreview(annotation)}
       onMouseOver={() => onPreview(annotation)}
-      onMouseOut={onPreviewEnd}
       onFocus={() => onPreview(annotation)}
-      onBlur={onPreviewEnd}
     >
       {index + 1}
     </button>
   );
 }
 
-function AnnotationPreview({ annotation }: { annotation: StoredAnnotation }) {
+function AnnotationPreview({
+  annotation,
+  index,
+  onEdit,
+  onDelete,
+  onClose,
+}: {
+  annotation: StoredAnnotation;
+  index: number;
+  onEdit: (annotation: StoredAnnotation) => void;
+  onDelete: (annotationId: string) => void;
+  onClose: () => void;
+}) {
+  const displayIndex = index >= 0 ? index + 1 : 1;
+
   return (
-    <div role="tooltip" style={getPreviewStyle(annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 })}>
+    <div
+      role="dialog"
+      aria-label={`Annotation ${displayIndex}`}
+      style={getPreviewStyle(annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 })}
+    >
+      <div style={styles.previewHeader}>
+        <div style={styles.previewTitle}>Annotation {displayIndex}</div>
+        <div style={styles.previewActions}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ ...styles.secondaryButton, ...styles.iconButton }}
+            aria-label={`Close annotation ${displayIndex}`}
+            title={`Close annotation ${displayIndex}`}
+          >
+            ×
+          </button>
+          <button
+            type="button"
+            onClick={() => onEdit(annotation)}
+            style={{ ...styles.secondaryButton, ...styles.iconButton }}
+            aria-label={`Edit annotation ${displayIndex}`}
+            title={`Edit annotation ${displayIndex}`}
+          >
+            ✎
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(annotation.id)}
+            style={{ ...styles.deleteButton, ...styles.iconButton }}
+            aria-label={`Delete annotation ${displayIndex}`}
+            title={`Delete annotation ${displayIndex}`}
+          >
+            🗑
+          </button>
+        </div>
+      </div>
       <div style={styles.noteText}>{annotation.note}</div>
       <div style={styles.metaText}>{formatStoredAnnotationSummary(annotation)}</div>
     </div>
@@ -1005,12 +1087,37 @@ const styles = {
   preview: {
     position: "fixed",
     maxWidth: 240,
-    pointerEvents: "none",
+    pointerEvents: "auto",
     background: "#ffffff",
     border: "1px solid #cbd5e1",
     borderRadius: 10,
     padding: 10,
     boxShadow: "0 14px 35px rgba(15, 23, 42, 0.18)",
+  } satisfies CSSProperties,
+  previewHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 6,
+  } satisfies CSSProperties,
+  previewTitle: {
+    color: "#475569",
+    fontSize: 12,
+    fontWeight: 800,
+  } satisfies CSSProperties,
+  previewActions: {
+    display: "inline-flex",
+    gap: 6,
+  } satisfies CSSProperties,
+  iconButton: {
+    width: 26,
+    height: 26,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    lineHeight: 1,
   } satisfies CSSProperties,
   pin: {
     position: "fixed",
