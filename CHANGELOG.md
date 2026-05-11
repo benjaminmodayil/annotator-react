@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+### Patch Changes
+
+- 24b4250: Show editable annotation popovers from collapsed pins and use icon-only delete controls.
+
 ## 0.2.1
 
 ### Patch Changes
