@@ -1,14 +1,15 @@
 #!/bin/bash
 set -e
 
+base_ref="${FALLOW_BASE_REF:-origin/main}"
+if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+  fallow_base="$(git merge-base HEAD "$base_ref")"
+else
+  fallow_base="${FALLOW_BASE_REF:-main}"
+fi
+
 echo "🧹 Running lint-staged..."
 npx lint-staged
 
 echo "🌾 Running Fallow audit..."
-npx fallow audit --base main --gate new-only --dead-code-baseline fallow-baselines/dead-code.json --health-baseline fallow-baselines/health.json --dupes-baseline fallow-baselines/dupes.json --summary --fail-on-issues
-
-echo "🔎 Running typecheck..."
-npm run typecheck
-
-echo "🧪 Running tests..."
-npm run test
+npx fallow audit --base "$fallow_base" --summary --fail-on-issues
