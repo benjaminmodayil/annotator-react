@@ -4,3 +4,6 @@ dist/
 examples/*/node_modules/
 examples/*/dist/
 .DS_Store
+
+# Fallow cache
+.fallow/
