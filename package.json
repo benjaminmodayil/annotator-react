@@ -74,7 +74,7 @@
     "release": "npm run check:all && changeset publish",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check:all",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "bippy": "^0.5.39",
@@ -93,7 +93,7 @@
     "fallow": "^2.75.0",
     "happy-dom": "^20.0.11",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.5",
+    "lint-staged": "^15.2.11",
     "prettier": "^3.8.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
