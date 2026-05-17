@@ -28,14 +28,20 @@ if (!existsSync(".changeset/config.json")) {
 const event = readGithubEvent();
 const labels = event?.pull_request?.labels?.map((label) => label.name) ?? [];
 const title = event?.pull_request?.title ?? "";
-const headRef = event?.pull_request?.head?.ref ?? process.env.GITHUB_HEAD_REF ?? "";
+const headRef =
+  event?.pull_request?.head?.ref ?? process.env.GITHUB_HEAD_REF ?? "";
 
 if (labels.includes(NO_CHANGESET_LABEL)) {
-  console.log(`Skipping changeset check because PR has '${NO_CHANGESET_LABEL}' label.`);
+  console.log(
+    `Skipping changeset check because PR has '${NO_CHANGESET_LABEL}' label.`
+  );
   process.exit(0);
 }
 
-if (title.toLowerCase().startsWith("chore: version packages") || headRef.startsWith("changeset-release/")) {
+if (
+  title.toLowerCase().startsWith("chore: version packages") ||
+  headRef.startsWith("changeset-release/")
+) {
   console.log("Skipping changeset check for Changesets version PR.");
   process.exit(0);
 }
@@ -48,10 +54,14 @@ if (changedFiles.some((file) => CHANGESET_FILE.test(file))) {
   process.exit(0);
 }
 
-const userFacingFiles = changedFiles.filter((file) => isUserFacingChange(file, baseRef));
+const userFacingFiles = changedFiles.filter((file) =>
+  isUserFacingChange(file, baseRef)
+);
 
 if (userFacingFiles.length === 0) {
-  console.log("No user-facing package changes detected; changeset not required.");
+  console.log(
+    "No user-facing package changes detected; changeset not required."
+  );
   process.exit(0);
 }
 
@@ -60,8 +70,12 @@ for (const file of userFacingFiles) {
   console.error(`- ${file}`);
 }
 console.error("");
-console.error("Run `npm run changeset` and commit the generated .changeset/*.md file.");
-console.error(`If this PR truly does not need a release note, add the '${NO_CHANGESET_LABEL}' label.`);
+console.error(
+  "Run `npm run changeset` and commit the generated .changeset/*.md file."
+);
+console.error(
+  `If this PR truly does not need a release note, add the '${NO_CHANGESET_LABEL}' label.`
+);
 process.exit(1);
 
 function getBaseRef() {
@@ -83,7 +97,10 @@ function getBaseRef() {
 
 function getChangedFiles(baseRef) {
   const output = git(["diff", "--name-only", `${baseRef}...HEAD`]);
-  return output.split("\n").map((line) => line.trim()).filter(Boolean);
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function isUserFacingChange(file, baseRef) {
@@ -115,11 +132,17 @@ function hasPublicPackageFieldChanges(baseRef) {
   }
 
   const previous = JSON.parse(previousText);
-  return PUBLIC_PACKAGE_FIELDS.some((field) => stableStringify(previous[field]) !== stableStringify(current[field]));
+  return PUBLIC_PACKAGE_FIELDS.some(
+    (field) =>
+      stableStringify(previous[field]) !== stableStringify(current[field])
+  );
 }
 
 function readGithubEvent() {
-  if (!process.env.GITHUB_EVENT_PATH || !existsSync(process.env.GITHUB_EVENT_PATH)) {
+  if (
+    !process.env.GITHUB_EVENT_PATH ||
+    !existsSync(process.env.GITHUB_EVENT_PATH)
+  ) {
     return null;
   }
 
@@ -140,7 +163,11 @@ function sortJson(value) {
   }
 
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, nested]) => [key, sortJson(nested)]));
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, nested]) => [key, sortJson(nested)])
+    );
   }
 
   return value;

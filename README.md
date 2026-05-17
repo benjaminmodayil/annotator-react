@@ -43,7 +43,7 @@ createRoot(document.getElementById("root")!).render(
   <>
     <App />
     <SourceAnnotator />
-  </>,
+  </>
 );
 ```
 
@@ -132,12 +132,13 @@ Source: src/App.tsx:42:7
 Nearest React component: ActionButton
 React owner path: ActionButton › HeroSection › App
 React source stack:
+
 - src/App.tsx:42:7 (ActionButton)
 - src/App.tsx:18:3 (HeroSection)
-Element tag: button
-Element HTML: <button class="primary-cta" type="button">Start annotation pass</button>
-Element text: Start annotation pass
-Selector: #root main.app-shell section.hero button.primary-cta:nth-of-type(1)
+  Element tag: button
+  Element HTML: <button class="primary-cta" type="button">Start annotation pass</button>
+  Element text: Start annotation pass
+  Selector: #root main.app-shell section.hero button.primary-cta:nth-of-type(1)
 ```
 
 ## Captured data
