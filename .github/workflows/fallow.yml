@@ -30,6 +30,3 @@ jobs:
           format: sarif
           comment: true
           annotations: true
-          dead-code-baseline: fallow-baselines/dead-code.json
-          health-baseline: fallow-baselines/health.json
-          dupes-baseline: fallow-baselines/dupes.json
