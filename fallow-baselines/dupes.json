@@ -1,15 +1,17 @@
 {
   "clone_groups": [
+    "src/SourceAnnotator.tsx:144-155|src/SourceAnnotator.tsx:383-394",
     "src/SourceAnnotator.tsx:164-183|src/SourceAnnotator.tsx:193-212",
-    "src/__tests__/SourceAnnotator.test.tsx:161-175|src/__tests__/SourceAnnotator.test.tsx:93-107",
-    "src/__tests__/SourceAnnotator.test.tsx:158-164|src/__tests__/SourceAnnotator.test.tsx:313-319",
-    "src/__tests__/SourceAnnotator.test.tsx:158-162|src/__tests__/SourceAnnotator.test.tsx:313-317|src/__tests__/SourceAnnotator.test.tsx:356-360",
-    "src/__tests__/SourceAnnotator.test.tsx:162-175|src/__tests__/SourceAnnotator.test.tsx:362-374",
-    "src/__tests__/SourceAnnotator.test.tsx:218-223|src/__tests__/SourceAnnotator.test.tsx:257-262",
-    "src/__tests__/SourceAnnotator.test.tsx:263-273|src/__tests__/SourceAnnotator.test.tsx:319-329",
-    "src/__tests__/SourceAnnotator.test.tsx:323-338|src/__tests__/SourceAnnotator.test.tsx:365-380",
-    "src/__tests__/SourceAnnotator.test.tsx:323-332|src/__tests__/SourceAnnotator.test.tsx:453-462",
-    "src/__tests__/SourceAnnotator.test.tsx:374-385|src/__tests__/SourceAnnotator.test.tsx:462-473",
-    "src/__tests__/SourceAnnotator.test.tsx:405-410|src/__tests__/SourceAnnotator.test.tsx:444-449"
+    "src/__tests__/SourceAnnotator.test.tsx:161-175|src/__tests__/SourceAnnotator.test.tsx:244-258|src/__tests__/SourceAnnotator.test.tsx:93-107",
+    "src/__tests__/SourceAnnotator.test.tsx:158-175|src/__tests__/SourceAnnotator.test.tsx:241-258",
+    "src/__tests__/SourceAnnotator.test.tsx:158-164|src/__tests__/SourceAnnotator.test.tsx:241-247|src/__tests__/SourceAnnotator.test.tsx:386-392",
+    "src/__tests__/SourceAnnotator.test.tsx:158-162|src/__tests__/SourceAnnotator.test.tsx:241-245|src/__tests__/SourceAnnotator.test.tsx:386-390|src/__tests__/SourceAnnotator.test.tsx:429-433",
+    "src/__tests__/SourceAnnotator.test.tsx:245-258|src/__tests__/SourceAnnotator.test.tsx:435-447",
+    "src/__tests__/SourceAnnotator.test.tsx:291-296|src/__tests__/SourceAnnotator.test.tsx:330-335",
+    "src/__tests__/SourceAnnotator.test.tsx:336-346|src/__tests__/SourceAnnotator.test.tsx:392-402",
+    "src/__tests__/SourceAnnotator.test.tsx:396-411|src/__tests__/SourceAnnotator.test.tsx:438-453",
+    "src/__tests__/SourceAnnotator.test.tsx:396-405|src/__tests__/SourceAnnotator.test.tsx:526-535",
+    "src/__tests__/SourceAnnotator.test.tsx:447-458|src/__tests__/SourceAnnotator.test.tsx:535-546",
+    "src/__tests__/SourceAnnotator.test.tsx:478-483|src/__tests__/SourceAnnotator.test.tsx:517-522"
   ]
 }

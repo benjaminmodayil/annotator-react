@@ -2,6 +2,18 @@
 
 Agent guidance for this repo. Read `@README.md` for package usage/API and `@docs/packaging.md` for release details.
 
+## Project purpose
+
+This is personal local-agent tooling for the maintainer's custom UI annotation workflow. It wraps `element-source` with the overlay/output behavior needed for local coding agents.
+
+Upstream/reference projects to remember:
+
+- Aiden Bai created `element-source`: https://github.com/aidenybai/element-source
+- Aiden Bai also created react-grab: https://www.react-grab.com/
+- Agentation is another recommended product in this space: https://www.agentation.com/
+
+Optimize this repo for maintainer needs first. Do not promise stable roadmap, broad framework support, issue triage, or support commitments in docs.
+
 ## Commands
 
 ```bash
@@ -22,6 +34,8 @@ npm run changeset
 ```
 
 Commit the generated `.changeset/*.md` with the change.
+
+CI enforces this for package-facing changes. Use the `no-changeset-needed` PR label only when the guard is a false positive.
 
 Semver choice:
 

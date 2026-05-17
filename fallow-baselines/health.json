@@ -1,5 +1,10 @@
 {
   "finding_counts": {
+    "scripts/check-changeset.mjs": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
     "src/SourceAnnotator.tsx": {
       "complexity_moderate": {
         "count": 1

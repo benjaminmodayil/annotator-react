@@ -1,17 +1,17 @@
 {
   "name": "@mikuexe/annotator-react",
-  "version": "0.1.2",
+  "version": "0.2.2",
   "description": "React overlay for source-aware UI annotations copied into coding agents.",
   "type": "module",
   "license": "MIT",
-  "author": "Benjamin Modayil",
+  "author": "mikuexe",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mikuexe/annotator-react.git"
+    "url": "git+https://github.com/benjaminmodayil/annotator-react.git"
   },
-  "homepage": "https://github.com/mikuexe/annotator-react#readme",
+  "homepage": "https://github.com/benjaminmodayil/annotator-react#readme",
   "bugs": {
-    "url": "https://github.com/mikuexe/annotator-react/issues"
+    "url": "https://github.com/benjaminmodayil/annotator-react/issues"
   },
   "keywords": [
     "react",
@@ -72,6 +72,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "npm run check:all && changeset publish",
+    "changeset:check": "node scripts/check-changeset.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check:all",
     "prepare": "husky || true"
