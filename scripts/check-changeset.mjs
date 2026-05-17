@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 const CHANGESET_FILE = /^\.changeset\/(?!README\.md$).+\.md$/;
 const NO_CHANGESET_LABEL = "no-changeset-needed";
+const PUBLIC_CHANGE_FILES = new Set(["README.md", "tsup.config.ts"]);
 const PUBLIC_PACKAGE_FIELDS = [
   "name",
   "description",
@@ -79,20 +80,24 @@ console.error(
 process.exit(1);
 
 function getBaseRef() {
+  return getExplicitBaseRef() ?? getGithubBaseRef() ?? getDefaultBaseRef();
+}
+
+function getExplicitBaseRef() {
   const explicitBaseIndex = process.argv.indexOf("--base");
-  if (explicitBaseIndex !== -1 && process.argv[explicitBaseIndex + 1]) {
-    return process.argv[explicitBaseIndex + 1];
-  }
+  return explicitBaseIndex === -1 ? null : process.argv[explicitBaseIndex + 1];
+}
 
-  if (process.env.GITHUB_BASE_REF) {
-    return `origin/${process.env.GITHUB_BASE_REF}`;
-  }
+function getGithubBaseRef() {
+  return process.env.GITHUB_BASE_REF
+    ? `origin/${process.env.GITHUB_BASE_REF}`
+    : null;
+}
 
-  if (gitSucceeds(["rev-parse", "--verify", "origin/main"])) {
-    return "origin/main";
-  }
-
-  return "HEAD~1";
+function getDefaultBaseRef() {
+  return gitSucceeds(["rev-parse", "--verify", "origin/main"])
+    ? "origin/main"
+    : "HEAD~1";
 }
 
 function getChangedFiles(baseRef) {
@@ -104,23 +109,23 @@ function getChangedFiles(baseRef) {
 }
 
 function isUserFacingChange(file, baseRef) {
-  if (file === "README.md") {
-    return true;
-  }
+  return (
+    PUBLIC_CHANGE_FILES.has(file) ||
+    isPublicPackageJsonChange(file, baseRef) ||
+    isRuntimeSourceFile(file)
+  );
+}
 
-  if (file === "tsup.config.ts") {
-    return true;
-  }
+function isPublicPackageJsonChange(file, baseRef) {
+  return file === "package.json" && hasPublicPackageFieldChanges(baseRef);
+}
 
-  if (file === "package.json") {
-    return hasPublicPackageFieldChanges(baseRef);
-  }
-
-  if (file.startsWith("src/")) {
-    return !file.includes("/__tests__/") && !/\.test\.[tj]sx?$/.test(file);
-  }
-
-  return false;
+function isRuntimeSourceFile(file) {
+  return (
+    file.startsWith("src/") &&
+    !file.includes("/__tests__/") &&
+    !/\.test\.[tj]sx?$/.test(file)
+  );
 }
 
 function hasPublicPackageFieldChanges(baseRef) {

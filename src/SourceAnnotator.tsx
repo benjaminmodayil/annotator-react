@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, Dispatch, SetStateAction } from "react";
 import { Toaster, toast } from "sonner";
 import {
   captureAnnotationTarget,
@@ -41,6 +41,13 @@ type DraftSelection = {
 };
 
 type StoredTarget = {
+  targetElement: Element;
+  rect: Rect;
+  frameElement: HTMLIFrameElement | null;
+  data: AnnotationTarget;
+};
+
+type StoredTargetInput = {
   targetElement: Element;
   rect: Rect;
   frameElement: HTMLIFrameElement | null;
@@ -138,32 +145,7 @@ export function SourceAnnotator({
     }
   }, [enabled]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!matchesHotkey(event, hotkey)) {
-        return;
-      }
-
-      event.preventDefault();
-      setIsAnnotating((current) => enabled && !current);
-    };
-
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    if (resolvedTarget.document && resolvedTarget.document !== document) {
-      resolvedTarget.document.addEventListener("keydown", onKeyDown);
-    }
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      if (resolvedTarget.document && resolvedTarget.document !== document) {
-        resolvedTarget.document.removeEventListener("keydown", onKeyDown);
-      }
-    };
-  }, [enabled, hotkey, resolvedTarget.document]);
+  useAnnotatorHotkey(enabled, hotkey, resolvedTarget.document, setIsAnnotating);
 
   const handleElementSelection = useCallback(
     async (
@@ -178,31 +160,11 @@ export function SourceAnnotator({
         try {
           const targetData = await captureAnnotationTarget(eventTarget);
           setAnnotations((existing) =>
-            existing.map((annotation) => {
-              if (annotation.id !== linkingAnnotationId) {
-                return annotation;
-              }
-
-              if (
-                annotation.targets.some(
-                  (targetEntry) => targetEntry.targetElement === eventTarget
-                )
-              ) {
-                return annotation;
-              }
-
-              return {
-                ...annotation,
-                targets: [
-                  ...annotation.targets,
-                  {
-                    targetElement: eventTarget,
-                    rect,
-                    frameElement,
-                    data: targetData,
-                  },
-                ],
-              };
+            addTargetToAnnotation(existing, linkingAnnotationId, {
+              targetElement: eventTarget,
+              rect,
+              frameElement,
+              data: targetData,
             })
           );
           setLinkingAnnotationId(null);
@@ -211,41 +173,11 @@ export function SourceAnnotator({
         } catch {
           setStatus("Element linked without source info.");
           setAnnotations((existing) =>
-            existing.map((annotation) => {
-              if (annotation.id !== linkingAnnotationId) {
-                return annotation;
-              }
-
-              if (
-                annotation.targets.some(
-                  (targetEntry) => targetEntry.targetElement === eventTarget
-                )
-              ) {
-                return annotation;
-              }
-
-              return {
-                ...annotation,
-                targets: [
-                  ...annotation.targets,
-                  {
-                    targetElement: eventTarget,
-                    rect,
-                    frameElement,
-                    data: {
-                      source: null,
-                      sourceStack: [],
-                      componentPath: [],
-                      element: {
-                        tagName: eventTarget.tagName.toLowerCase(),
-                        text: eventTarget.textContent?.trim() ?? "",
-                        html: "",
-                        selector: "",
-                      },
-                    },
-                  },
-                ],
-              };
+            addTargetToAnnotation(existing, linkingAnnotationId, {
+              targetElement: eventTarget,
+              rect,
+              frameElement,
+              data: createFallbackTarget(eventTarget),
             })
           );
           setLinkingAnnotationId(null);
@@ -438,29 +370,11 @@ export function SourceAnnotator({
       window.removeEventListener("resize", refreshTrackedRects);
     };
   }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
-  useEffect(() => {
-    if (!previewedAnnotation) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPreviewedAnnotation(null);
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    if (resolvedTarget.document && resolvedTarget.document !== document) {
-      resolvedTarget.document.addEventListener("keydown", onKeyDown);
-    }
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      if (resolvedTarget.document && resolvedTarget.document !== document) {
-        resolvedTarget.document.removeEventListener("keydown", onKeyDown);
-      }
-    };
-  }, [previewedAnnotation, resolvedTarget.document]);
+  usePreviewDismissal(
+    previewedAnnotation,
+    resolvedTarget.document,
+    setPreviewedAnnotation
+  );
 
   const addAnnotation = useCallback(async () => {
     const current = selectedRef.current;
@@ -643,101 +557,22 @@ export function SourceAnnotator({
         />
       ) : null}
 
-      {selected?.targets.length ? (
-        <div
-          style={getPopoverStyle(
-            selected.targets[selected.targets.length - 1].rect
-          )}
-          role="dialog"
-          aria-label="Add source annotation"
-        >
-          <div style={styles.popoverTitle}>Annotation</div>
-          <div style={styles.metaText}>
-            {formatSelectedTargets(selected.targets)}
-          </div>
-          <textarea
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="What should change here?"
-            style={styles.textarea}
-            rows={4}
-            autoFocus
-          />
-          <div style={styles.popoverActions}>
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              style={styles.secondaryButton}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={addAnnotation}
-              style={styles.primaryButton}
-              disabled={selected.targets.some(
-                (targetEntry) => targetEntry.loading
-              )}
-            >
-              {selected.editingId ? "Update note" : "Save note"}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <DraftPopover
+        selected={selected}
+        note={note}
+        onNoteChange={setNote}
+        onCancel={() => setSelected(null)}
+        onSave={addAnnotation}
+      />
 
-      {isAnnotating ? (
-        <section style={styles.panel} aria-label="Collected annotations">
-          <div style={styles.panelHeader}>
-            <strong>Annotations</strong>
-            <span style={styles.badge}>{annotations.length}</span>
-          </div>
-          {annotations.length ? (
-            <ol style={styles.annotationList}>
-              {annotations.map((annotation, index) => (
-                <li key={annotation.id} style={styles.annotationItem}>
-                  <div style={styles.annotationContent}>
-                    <div style={styles.noteText}>{annotation.note}</div>
-                    <div style={styles.metaText}>
-                      {formatStoredAnnotationSummary(annotation)}
-                    </div>
-                  </div>
-                  <div style={styles.annotationActions}>
-                    <button
-                      type="button"
-                      onClick={() => startLinkingAnnotation(annotation.id)}
-                      style={styles.linkButton}
-                    >
-                      Link element
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteAnnotation(annotation.id)}
-                      style={{ ...styles.deleteButton, ...styles.iconButton }}
-                      aria-label={`Delete annotation ${index + 1}`}
-                      title={`Delete annotation ${index + 1}`}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p style={styles.emptyText}>
-              Hover an element, click it, then add a note.
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={collect}
-            style={styles.collectButton}
-            disabled={!annotations.length}
-          >
-            Collect
-          </button>
-          {status ? <div style={styles.status}>{status}</div> : null}
-        </section>
-      ) : null}
+      <AnnotationPanel
+        isAnnotating={isAnnotating}
+        annotations={annotations}
+        status={status}
+        onCollect={collect}
+        onLink={startLinkingAnnotation}
+        onDelete={deleteAnnotation}
+      />
     </div>
   );
 }
@@ -789,6 +624,134 @@ function Pin({
     >
       {index + 1}
     </button>
+  );
+}
+
+function DraftPopover({
+  selected,
+  note,
+  onNoteChange,
+  onCancel,
+  onSave,
+}: {
+  selected: DraftSelection | null;
+  note: string;
+  onNoteChange: Dispatch<SetStateAction<string>>;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  if (!selected?.targets.length) {
+    return null;
+  }
+
+  return (
+    <div
+      style={getPopoverStyle(
+        selected.targets[selected.targets.length - 1].rect
+      )}
+      role="dialog"
+      aria-label="Add source annotation"
+    >
+      <div style={styles.popoverTitle}>Annotation</div>
+      <div style={styles.metaText}>
+        {formatSelectedTargets(selected.targets)}
+      </div>
+      <textarea
+        value={note}
+        onChange={(event) => onNoteChange(event.target.value)}
+        placeholder="What should change here?"
+        style={styles.textarea}
+        rows={4}
+        autoFocus
+      />
+      <div style={styles.popoverActions}>
+        <button type="button" onClick={onCancel} style={styles.secondaryButton}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          style={styles.primaryButton}
+          disabled={selected.targets.some((targetEntry) => targetEntry.loading)}
+        >
+          {selected.editingId ? "Update note" : "Save note"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AnnotationPanel({
+  isAnnotating,
+  annotations,
+  status,
+  onCollect,
+  onLink,
+  onDelete,
+}: {
+  isAnnotating: boolean;
+  annotations: StoredAnnotation[];
+  status: string | null;
+  onCollect: () => void;
+  onLink: (annotationId: string) => void;
+  onDelete: (annotationId: string) => void;
+}) {
+  if (!isAnnotating) {
+    return null;
+  }
+
+  return (
+    <section style={styles.panel} aria-label="Collected annotations">
+      <div style={styles.panelHeader}>
+        <strong>Annotations</strong>
+        <span style={styles.badge}>{annotations.length}</span>
+      </div>
+      {annotations.length ? (
+        <ol style={styles.annotationList}>
+          {annotations.map((annotation, index) => (
+            <li key={annotation.id} style={styles.annotationItem}>
+              <div style={styles.annotationContent}>
+                <div style={styles.noteText}>{annotation.note}</div>
+                <div style={styles.metaText}>
+                  {formatStoredAnnotationSummary(annotation)}
+                </div>
+              </div>
+              <div style={styles.annotationActions}>
+                <button
+                  type="button"
+                  onClick={() => onLink(annotation.id)}
+                  style={styles.linkButton}
+                >
+                  Link element
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(annotation.id)}
+                  style={{ ...styles.deleteButton, ...styles.iconButton }}
+                  aria-label={`Delete annotation ${index + 1}`}
+                  title={`Delete annotation ${index + 1}`}
+                >
+                  🗑
+                </button>
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p style={styles.emptyText}>
+          Hover an element, click it, then add a note.
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={onCollect}
+        style={styles.collectButton}
+        disabled={!annotations.length}
+      >
+        Collect
+      </button>
+      {status ? <div style={styles.status}>{status}</div> : null}
+    </section>
   );
 }
 
@@ -853,6 +816,107 @@ function AnnotationPreview({
       </div>
     </div>
   );
+}
+
+function useAnnotatorHotkey(
+  enabled: boolean,
+  hotkey: string,
+  targetDocument: Document | null,
+  setIsAnnotating: Dispatch<SetStateAction<boolean>>
+) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!matchesHotkey(event, hotkey)) {
+        return;
+      }
+
+      event.preventDefault();
+      setIsAnnotating((current) => enabled && !current);
+    };
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    return listenForKeydown(targetDocument, onKeyDown);
+  }, [enabled, hotkey, setIsAnnotating, targetDocument]);
+}
+
+function usePreviewDismissal(
+  previewedAnnotation: StoredAnnotation | null,
+  targetDocument: Document | null,
+  setPreviewedAnnotation: Dispatch<SetStateAction<StoredAnnotation | null>>
+) {
+  useEffect(() => {
+    if (!previewedAnnotation) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewedAnnotation(null);
+      }
+    };
+
+    return listenForKeydown(targetDocument, onKeyDown);
+  }, [previewedAnnotation, setPreviewedAnnotation, targetDocument]);
+}
+
+function listenForKeydown(
+  targetDocument: Document | null,
+  onKeyDown: (event: KeyboardEvent) => void
+) {
+  document.addEventListener("keydown", onKeyDown);
+  if (targetDocument && targetDocument !== document) {
+    targetDocument.addEventListener("keydown", onKeyDown);
+  }
+
+  return () => {
+    document.removeEventListener("keydown", onKeyDown);
+    if (targetDocument && targetDocument !== document) {
+      targetDocument.removeEventListener("keydown", onKeyDown);
+    }
+  };
+}
+
+function addTargetToAnnotation(
+  annotations: StoredAnnotation[],
+  annotationId: string,
+  target: StoredTargetInput
+): StoredAnnotation[] {
+  return annotations.map((annotation) => {
+    if (
+      annotation.id !== annotationId ||
+      hasStoredTarget(annotation, target.targetElement)
+    ) {
+      return annotation;
+    }
+
+    return {
+      ...annotation,
+      targets: [...annotation.targets, target],
+    };
+  });
+}
+
+function hasStoredTarget(annotation: StoredAnnotation, targetElement: Element) {
+  return annotation.targets.some(
+    (targetEntry) => targetEntry.targetElement === targetElement
+  );
+}
+
+function createFallbackTarget(element: Element): AnnotationTarget {
+  return {
+    source: null,
+    sourceStack: [],
+    componentPath: [],
+    element: {
+      tagName: element.tagName.toLowerCase(),
+      text: element.textContent?.trim() ?? "",
+      html: "",
+      selector: "",
+    },
+  };
 }
 
 function stripStoredAnnotations(annotations: StoredAnnotation[]): Annotation[] {
@@ -1049,43 +1113,59 @@ function shouldExtendSelection(event: MouseEvent): boolean {
 }
 
 function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {
+  const parsedHotkey = parseHotkey(hotkey);
+
+  return (
+    event.key.toLowerCase() === parsedHotkey.key &&
+    event.metaKey === parsedHotkey.modifiers.meta &&
+    event.ctrlKey === parsedHotkey.modifiers.ctrl &&
+    event.shiftKey === parsedHotkey.modifiers.shift &&
+    event.altKey === parsedHotkey.modifiers.alt
+  );
+}
+
+type ParsedHotkey = {
+  key: string | undefined;
+  modifiers: {
+    meta: boolean;
+    ctrl: boolean;
+    shift: boolean;
+    alt: boolean;
+  };
+};
+
+const HOTKEY_MODIFIERS = new Set([
+  "ctrl",
+  "control",
+  "cmd",
+  "meta",
+  "mod",
+  "shift",
+  "alt",
+  "option",
+]);
+
+function parseHotkey(hotkey: string): ParsedHotkey {
   const parts = hotkey
     .toLowerCase()
     .split("+")
     .map((part) => part.trim())
     .filter(Boolean);
-  const key = parts.find(
-    (part) =>
-      ![
-        "ctrl",
-        "control",
-        "cmd",
-        "meta",
-        "mod",
-        "shift",
-        "alt",
-        "option",
-      ].includes(part)
-  );
+  const modifierParts = new Set(parts);
+  const usesMacMod = modifierParts.has("mod") && isMac();
 
-  const wantsMeta =
-    parts.includes("meta") ||
-    parts.includes("cmd") ||
-    (parts.includes("mod") && isMac());
-  const wantsCtrl =
-    parts.includes("ctrl") ||
-    parts.includes("control") ||
-    (parts.includes("mod") && !isMac());
-  const wantsShift = parts.includes("shift");
-  const wantsAlt = parts.includes("alt") || parts.includes("option");
-
-  return (
-    event.key.toLowerCase() === key &&
-    event.metaKey === wantsMeta &&
-    event.ctrlKey === wantsCtrl &&
-    event.shiftKey === wantsShift &&
-    event.altKey === wantsAlt
-  );
+  return {
+    key: parts.find((part) => !HOTKEY_MODIFIERS.has(part)),
+    modifiers: {
+      meta: modifierParts.has("meta") || modifierParts.has("cmd") || usesMacMod,
+      ctrl:
+        modifierParts.has("ctrl") ||
+        modifierParts.has("control") ||
+        (modifierParts.has("mod") && !usesMacMod),
+      shift: modifierParts.has("shift"),
+      alt: modifierParts.has("alt") || modifierParts.has("option"),
+    },
+  };
 }
 
 function isMac(): boolean {
