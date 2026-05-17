@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+base_ref="${FALLOW_BASE_REF:-origin/main}"
+resolve_fallow_base() {
+  for ref in "$base_ref" origin/main main master; do
+    if git rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+      if merge_base="$(git merge-base HEAD "$ref" 2>/dev/null)"; then
+        printf '%s\n' "$merge_base"
+        return 0
+      fi
+    fi
+  done
+
+  git rev-list --max-parents=0 HEAD | tail -n 1
+}
+fallow_base="$(resolve_fallow_base)"
+
+echo "🧹 Running lint-staged..."
+npx lint-staged
+
+echo "🌾 Running Fallow audit..."
+npx fallow audit --base "$fallow_base" --summary --fail-on-issues

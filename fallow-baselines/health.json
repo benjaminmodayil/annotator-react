@@ -1,0 +1,24 @@
+{
+  "finding_counts": {
+    "scripts/check-changeset.mjs": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "src/SourceAnnotator.tsx": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src/format.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": ["src/capture.ts:high impact"]
+}
