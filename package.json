@@ -64,17 +64,18 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test && npm run build",
-    "example:install": "npm install --prefix examples/vite-react",
-    "example:build": "npm run build --prefix examples/vite-react",
-    "pack:dry-run": "npm pack --dry-run",
-    "check:all": "npm run check && npm run example:build && npm run pack:dry-run",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "example:install": "pnpm --dir examples/vite-react install",
+    "example:build": "pnpm --dir examples/vite-react run build",
+    "pack:dry-run": "pnpm pack --dry-run",
+    "check:all": "pnpm run check && pnpm run example:build && pnpm run pack:dry-run",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "npm run check:all && changeset publish",
-    "prepack": "npm run build",
-    "prepublishOnly": "npm run check:all",
-    "prepare": "husky"
+    "release": "pnpm run check:all && changeset publish",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run check:all",
+    "prepare": "husky",
+    "preinstall": "node -e \"if (!process.env.npm_execpath?.includes('pnpm')) { console.error('Use pnpm'); process.exit(1) }\""
   },
   "dependencies": {
     "bippy": "^0.5.39",
@@ -107,5 +108,6 @@
   },
   "lint-staged": {
     "*": "prettier --ignore-unknown --write"
-  }
+  },
+  "packageManager": "pnpm@11.1.3"
 }
