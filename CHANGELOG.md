@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- cf6965c: Add same-origin iframe target support, page-aware linked annotations, multi-element collections, and follow-up element linking for existing notes.
+
+### Patch Changes
+
+- a0f1522: Remove Fallow baselines by cleaning up validated dead-code and duplication findings without changing the public annotation API.
+
 ## 0.2.2
 
 ### Patch Changes
