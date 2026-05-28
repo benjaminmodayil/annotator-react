@@ -111,11 +111,5 @@
   "lint-staged": {
     "*": "prettier --ignore-unknown --write"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "fallow"
-    ]
-  },
   "packageManager": "pnpm@11.1.3"
 }
