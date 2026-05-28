@@ -34,7 +34,63 @@ rules:
     severity: ERROR
     message: Avoid shell execution with template strings; use argument arrays and explicit escaping instead.
     pattern-either:
-      - pattern: exec(`...`)
-      - pattern: execSync(`...`)
-      - pattern: $CP.exec(`...`)
-      - pattern: $CP.execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              import { ..., exec, ... } from "node:child_process";
+              ...
+          - pattern: exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              import { ..., exec, ... } from "child_process";
+              ...
+          - pattern: exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              import { ..., execSync, ... } from "node:child_process";
+              ...
+          - pattern: execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              import { ..., execSync, ... } from "child_process";
+              ...
+          - pattern: execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.exec(`...`)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.execSync(`...`)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.execSync(`...`)
