@@ -1,8 +1,18 @@
-import type { Annotation, AnnotationCollection, AnnotationTarget, PageContext, SourceAnnotatorOutput } from "./types";
+import type {
+  Annotation,
+  AnnotationCollection,
+  AnnotationTarget,
+  PageContext,
+  SourceAnnotatorOutput,
+} from "./types";
 
-const TASK_FRAMING = "Please update the UI based on these source-linked annotations.";
+const TASK_FRAMING =
+  "Please update the UI based on these source-linked annotations.";
 
-export function createAnnotationCollection(annotations: Annotation[], page = getPageContext()): AnnotationCollection {
+export function createAnnotationCollection(
+  annotations: Annotation[],
+  page = getPageContext()
+): AnnotationCollection {
   return {
     annotations,
     createdAt: new Date().toISOString(),
@@ -11,7 +21,8 @@ export function createAnnotationCollection(annotations: Annotation[], page = get
 }
 
 export function getPageContext(targetDocument?: Document | null): PageContext {
-  const activeDocument = targetDocument ?? (typeof document === "undefined" ? null : document);
+  const activeDocument =
+    targetDocument ?? (typeof document === "undefined" ? null : document);
   const location = activeDocument?.location;
 
   return {
@@ -22,7 +33,7 @@ export function getPageContext(targetDocument?: Document | null): PageContext {
 
 export function formatAnnotationCollection(
   collection: AnnotationCollection,
-  output: SourceAnnotatorOutput = "markdown",
+  output: SourceAnnotatorOutput = "markdown"
 ): string {
   if (output === "json") {
     return formatJson(collection);
@@ -74,42 +85,67 @@ function formatJson(collection: AnnotationCollection): string {
   return JSON.stringify(collection, null, 2);
 }
 
-function appendTargetMarkdown(lines: string[], target: AnnotationTarget, label: string) {
-  const source = formatSource(target);
+function appendTargetMarkdown(
+  lines: string[],
+  target: AnnotationTarget,
+  label: string
+) {
   const sourceStack = formatSourceStack(target);
-  const nearestComponent = target.source?.componentName;
+
+  pushLabeledLine(lines, label, "Source", formatSource(target));
+  pushLabeledLine(
+    lines,
+    label,
+    "Nearest React component",
+    target.source?.componentName
+  );
+  pushOwnerPath(lines, target, label);
+  pushSourceStack(lines, sourceStack, label);
+  pushElementMarkdown(lines, target, label);
+}
+
+function pushLabeledLine(
+  lines: string[],
+  label: string,
+  name: string,
+  value: string | null | undefined
+) {
+  if (value) {
+    lines.push(`${label}${name}: ${value}`);
+  }
+}
+
+function pushOwnerPath(
+  lines: string[],
+  target: AnnotationTarget,
+  label: string
+) {
   const ownerPath = target.componentPath.join(" › ");
-
-  if (source) {
-    lines.push(`${label}Source: ${source}`);
+  if (ownerPath && ownerPath !== target.source?.componentName) {
+    pushLabeledLine(lines, label, "React owner path", ownerPath);
   }
+}
 
-  if (nearestComponent) {
-    lines.push(`${label}Nearest React component: ${nearestComponent}`);
-  }
-
-  if (ownerPath && ownerPath !== nearestComponent) {
-    lines.push(`${label}React owner path: ${ownerPath}`);
-  }
-
+function pushSourceStack(
+  lines: string[],
+  sourceStack: string[],
+  label: string
+) {
   if (sourceStack.length) {
     lines.push(`${label}React source stack:`);
     sourceStack.forEach((frame) => lines.push(`- ${frame}`));
   }
+}
 
+function pushElementMarkdown(
+  lines: string[],
+  target: AnnotationTarget,
+  label: string
+) {
   lines.push(`${label}Element tag: ${target.element.tagName}`);
-
-  if (target.element.html) {
-    lines.push(`${label}Element HTML: ${target.element.html}`);
-  }
-
-  if (target.element.text) {
-    lines.push(`${label}Element text: ${target.element.text}`);
-  }
-
-  if (target.element.selector) {
-    lines.push(`${label}Selector: ${target.element.selector}`);
-  }
+  pushLabeledLine(lines, label, "Element HTML", target.element.html);
+  pushLabeledLine(lines, label, "Element text", target.element.text);
+  pushLabeledLine(lines, label, "Selector", target.element.selector);
 }
 
 function formatSource(target: AnnotationTarget): string {
@@ -136,7 +172,9 @@ function formatSourceStack(target: AnnotationTarget): string[] {
     .filter(Boolean);
 }
 
-function formatSourceFrame(frame: AnnotationTarget["sourceStack"][number]): string {
+function formatSourceFrame(
+  frame: AnnotationTarget["sourceStack"][number]
+): string {
   if (!frame.filePath) {
     return "";
   }

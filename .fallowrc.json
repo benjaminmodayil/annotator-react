@@ -1,9 +1,56 @@
 {
-  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
-  "audit": {
-    "gate": "new-only",
-    "deadCodeBaseline": "fallow-baselines/dead-code.json",
-    "healthBaseline": "fallow-baselines/health.json",
-    "dupesBaseline": "fallow-baselines/dupes.json"
+  "$schema": "https://docs.fallow.tools/config-schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/register.ts",
+    "eslint.config.mjs",
+    "examples/vite-react/src/main.tsx"
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "coverage/**",
+    "examples/*/node_modules/**",
+    "examples/*/dist/**",
+    ".fallow/**",
+    ".puli/**",
+    "scripts/check-changeset.mjs"
+  ],
+  "ignoreDependencies": [
+    "@arethetypeswrong/cli",
+    "@eslint/js",
+    "@microsoft/eslint-formatter-sarif",
+    "@tanstack/eslint-plugin-query",
+    "@vitest/eslint-plugin",
+    "eslint",
+    "eslint-config-prettier",
+    "eslint-plugin-jest-dom",
+    "eslint-plugin-jsx-a11y",
+    "eslint-plugin-n",
+    "eslint-plugin-no-secrets",
+    "eslint-plugin-no-unsanitized",
+    "eslint-plugin-perfectionist",
+    "eslint-plugin-react-hooks",
+    "eslint-plugin-react-refresh",
+    "eslint-plugin-regexp",
+    "eslint-plugin-security",
+    "eslint-plugin-sonarjs",
+    "eslint-plugin-testing-library",
+    "eslint-plugin-unicorn",
+    "fallow",
+    "globals",
+    "jsonc-eslint-parser",
+    "publint",
+    "typescript",
+    "typescript-eslint",
+    "yaml-eslint-parser"
+  ],
+  "health": {
+    "maxCognitive": 30,
+    "maxCrap": 120,
+    "maxCyclomatic": 20
+  },
+  "rules": {
+    "test-only-dependencies": "off"
   }
 }

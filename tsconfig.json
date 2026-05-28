@@ -21,5 +21,14 @@
     },
     "jsx": "react-jsx"
   },
-  "include": ["src", "examples/vite-react/src", "vitest.config.ts", "tsup.config.ts"]
+  "include": [
+    ".puli/**/*.mjs",
+    "eslint.config.mjs",
+    "examples/vite-react/src",
+    "examples/vite-react/vite.config.ts",
+    "scripts/**/*.mjs",
+    "src",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
 }

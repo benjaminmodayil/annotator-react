@@ -2,6 +2,19 @@
 
 React devtool overlay for source-aware UI annotations. Select live DOM elements, write notes, then copy an agent-ready Markdown prompt.
 
+## Start here first
+
+If you want a polished, supported tool in this space, look at these first:
+
+- [react-grab](https://www.react-grab.com/)
+- [Agentation](https://www.agentation.com/)
+
+This package exists for my own local-agent UI workflow. It is intentionally small, experimental, and likely to change whenever my needs change.
+
+Important credit: Aiden Bai created [react-grab](https://www.react-grab.com/) and [`element-source`](https://github.com/aidenybai/element-source), the source-resolution library this package builds on.
+
+I made this repo because I wanted custom UI behavior on top of `element-source`. You are welcome to use it, but please treat it as personal tooling, not a supported product. I am not committing to issue triage, feature requests, roadmap stability, or compatibility guarantees. Requests are fine, but this package will continue to follow my own needs first.
+
 ## Install
 
 ```bash
@@ -16,7 +29,7 @@ npm install react react-dom
 
 ## Quick start
 
-`register` must be the first import in your app entry, before React loads.
+`register` must load before React.
 
 ```tsx
 // src/main.tsx
@@ -30,11 +43,11 @@ createRoot(document.getElementById("root")!).render(
   <>
     <App />
     <SourceAnnotator />
-  </>,
+  </>
 );
 ```
 
-`SourceAnnotator` is a client component: render it only from browser/client React trees. In Next.js, place it behind a client boundary such as a file with `"use client"`.
+`SourceAnnotator` is a client component: render it only from browser/client React trees.
 
 Click **Annotate**, select an element, write a note, then click **Collect**.
 
@@ -119,12 +132,13 @@ Source: src/App.tsx:42:7
 Nearest React component: ActionButton
 React owner path: ActionButton › HeroSection › App
 React source stack:
+
 - src/App.tsx:42:7 (ActionButton)
 - src/App.tsx:18:3 (HeroSection)
-Element tag: button
-Element HTML: <button class="primary-cta" type="button">Start annotation pass</button>
-Element text: Start annotation pass
-Selector: #root main.app-shell section.hero button.primary-cta:nth-of-type(1)
+  Element tag: button
+  Element HTML: <button class="primary-cta" type="button">Start annotation pass</button>
+  Element text: Start annotation pass
+  Selector: #root main.app-shell section.hero button.primary-cta:nth-of-type(1)
 ```
 
 ## Captured data
@@ -180,19 +194,6 @@ npm run dev
 ```
 
 The example app aliases linked source to one React copy in Vite to avoid duplicate-React invalid hook errors during local development.
-
-## Package scripts
-
-```bash
-npm run check          # typecheck + unit tests + build
-npm run check:all      # check + example build + npm pack dry-run
-npm run pack:dry-run   # inspect npm package contents
-```
-
-## Publish support
-
-Package support links currently target `https://github.com/mikuexe/annotator-react`. Confirm `repository`, `homepage`, and `bugs` in `package.json` point at the final public repo before publishing.
-
 
 ## Current constraints
 

@@ -7,3 +7,7 @@ examples/*/dist/
 
 # Fallow cache
 .fallow/
+
+# Generated analyzer reports
+*.sarif
+*.tgz

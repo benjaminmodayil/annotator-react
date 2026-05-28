@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- cf6965c: Add same-origin iframe target support, page-aware linked annotations, multi-element collections, and follow-up element linking for existing notes.
+
+### Patch Changes
+
+- a0f1522: Remove Fallow baselines by cleaning up validated dead-code and duplication findings without changing the public annotation API.
+
+## 0.2.2
+
+### Patch Changes
+
+- 24b4250: Show editable annotation popovers from collapsed pins and use icon-only delete controls.
+
+## 0.2.1
+
+### Patch Changes
+
+- 41c21a6: Clarify README positioning, upstream credit, and support expectations.
+
+## 0.2.0
+
+### Minor Changes
+
+- d9ab7b3: Add collection page context, multi-element annotations, and link-element follow-up selection for existing notes.
+- 533db2a: Add same-origin iframe target support so parent review shells can annotate elements inside framed prototypes.
+
 ## 0.1.2
 
 ### Patch Changes
