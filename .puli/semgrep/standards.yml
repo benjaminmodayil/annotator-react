@@ -1,0 +1,40 @@
+rules:
+  # Keep this rule narrow and project-owned. Adjust the package manager wording
+  # to match the target repo before enabling it as an ERROR gate.
+  - id: project.no-unapproved-package-manager-in-ci
+    languages: [json, yaml]
+    severity: ERROR
+    message: Use the repository's approved package manager in package scripts and CI.
+    pattern-regex: \b(bun|bunx)\b
+    paths:
+      include:
+        - package.json
+        - pnpm-workspace.yaml
+        - /.github/workflows/*.yml
+        - /.github/workflows/*.yaml
+
+  - id: project.no-floating-github-action-ref
+    languages: [yaml]
+    severity: ERROR
+    message: Pin GitHub Actions to a stable version or reviewed commit SHA; do not use floating refs like main/master/latest/HEAD.
+    pattern-regex: 'uses:\s*[^\s#]+@(main|master|latest|HEAD)\b'
+    paths:
+      include:
+        - /.github/workflows/*.yml
+        - /.github/workflows/*.yaml
+
+  - id: react.no-raw-dangerously-set-inner-html
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Use an approved sanitized HTML wrapper instead of raw dangerouslySetInnerHTML.
+    pattern: <$TAG dangerouslySetInnerHTML={...} ... />
+
+  - id: node.no-shell-exec-template-string
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Avoid shell execution with template strings; use argument arrays and explicit escaping instead.
+    pattern-either:
+      - pattern: exec(`...`)
+      - pattern: execSync(`...`)
+      - pattern: $CP.exec(`...`)
+      - pattern: $CP.execSync(`...`)

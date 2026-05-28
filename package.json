@@ -68,14 +68,16 @@
     "example:install": "pnpm --dir examples/vite-react install",
     "example:build": "pnpm --dir examples/vite-react run build",
     "pack:dry-run": "pnpm pack --dry-run",
-    "check:all": "pnpm run check && pnpm run example:build && pnpm run pack:dry-run",
+    "check:all": "pnpm run check && pnpm run example:build && pnpm run pack:dry-run && pnpm run semgrep",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm run check:all && changeset publish",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check:all",
     "prepare": "husky",
-    "preinstall": "node -e \"if (!process.env.npm_execpath?.includes('pnpm')) { console.error('Use pnpm'); process.exit(1) }\""
+    "preinstall": "node -e \"if (!process.env.npm_execpath?.includes('pnpm')) { console.error('Use pnpm'); process.exit(1) }\"",
+    "semgrep": "semgrep scan --config .puli/semgrep --error",
+    "semgrep:sarif": "semgrep scan --config .puli/semgrep --sarif --output semgrep.sarif --error"
   },
   "dependencies": {
     "bippy": "^0.5.39",

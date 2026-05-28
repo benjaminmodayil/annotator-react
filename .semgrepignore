@@ -1,0 +1,11 @@
+# Puli Semgrep generated outputs and scan exclusions.
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.vite/
+*.min.js
+.fallow/
+.tmp/
+semgrep.sarif
