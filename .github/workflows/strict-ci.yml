@@ -24,80 +24,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
+          cache: pnpm
 
       - name: Install
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Check changeset
         if: github.event_name == 'pull_request'
-        run: npm run changeset:check
+        run: pnpm run changeset:check
 
-      - name: ESLint SARIF
-        id: eslint_sarif
-        shell: bash
-        run: |
-          set +e
-          npx eslint . \
-            --max-warnings=0 \
-            --format @microsoft/eslint-formatter-sarif \
-            --output-file eslint.sarif
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
+      - name: Install Semgrep
+        run: python -m pip install semgrep
 
-      - name: Setup reviewdog for ESLint
-        if: always() && github.event_name == 'pull_request' && hashFiles('eslint.sarif') != ''
-        uses: reviewdog/action-setup@v1
-        continue-on-error: true
-
-      - name: Reviewdog ESLint PR comments
-        if: always() && github.event_name == 'pull_request' && hashFiles('eslint.sarif') != ''
-        continue-on-error: true
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          reviewdog \
-            -f=sarif \
-            -name=eslint \
-            -reporter=github-pr-review \
-            -filter-mode=added \
-            -level=error \
-            < eslint.sarif
-
-      - name: Fail on ESLint findings
-        if: always() && steps.eslint_sarif.outputs.status != '0'
-        run: exit 1
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-      - name: Example build
-        run: npm run example:build
-
-      - name: Package checks
-        run: npm run package:check
-
-      - name: Pack dry run
-        run: npm run pack:dry-run
+      - name: Run full checks
+        run: pnpm run check:all
 
       - name: Fallow SARIF
         id: fallow_sarif
         shell: bash
         run: |
           set +e
-          npx fallow audit \
+          pnpm exec fallow audit \
             --changed-since "origin/${BASE_REF}" \
             --format sarif \
             --fail-on-issues \
@@ -106,26 +60,6 @@ jobs:
           status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
-
-      - name: Setup reviewdog for Fallow
-        if: always() && github.event_name == 'pull_request' && hashFiles('fallow.sarif') != ''
-        uses: reviewdog/action-setup@v1
-        continue-on-error: true
-
-      - name: Reviewdog Fallow PR comments
-        if: always() && github.event_name == 'pull_request' && hashFiles('fallow.sarif') != ''
-        continue-on-error: true
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          reviewdog \
-            -f=sarif \
-            -name=fallow \
-            -reporter=github-pr-review \
-            -filter-mode=added \
-            -level=warning \
-            < fallow.sarif
 
       - name: Fail on Fallow findings
         if: always() && steps.fallow_sarif.outputs.status != '0'
