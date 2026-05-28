@@ -69,6 +69,7 @@
     "example:build": "pnpm --dir examples/vite-react run build",
     "pack:dry-run": "pnpm pack --dry-run",
     "check:all": "pnpm run check && pnpm run example:build && pnpm run pack:dry-run && pnpm run semgrep",
+    "changeset:check": "node scripts/check-changeset.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm run check:all && changeset publish",
