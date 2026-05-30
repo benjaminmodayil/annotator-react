@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+### Patch Changes
+
+- f92bfe3: Add explicit annotation-session cancellation with Escape and a panel Cancel control, discarding unsent annotations when exiting.
+
 ## 0.3.0
 
 ### Minor Changes

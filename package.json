@@ -1,6 +1,6 @@
 {
   "name": "@mikuexe/annotator-react",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "React overlay for source-aware UI annotations copied into coding agents.",
   "type": "module",
   "license": "MIT",
