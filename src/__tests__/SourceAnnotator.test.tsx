@@ -164,7 +164,7 @@ describe("SourceAnnotator", () => {
     );
   });
 
-  it("shows annotation content and edit/delete actions when hovering a pin", async () => {
+  it("shows annotation content and edit/delete actions when hovering a numbered dot", async () => {
     const { container } = await createSavedAnnotation("Original note");
 
     const pin = getButton(container, "1");
@@ -177,7 +177,7 @@ describe("SourceAnnotator", () => {
 
     expect(pin.getAttribute("aria-expanded")).toBe("true");
     const popover = container.querySelector(
-      '[role="dialog"][aria-label="Annotation 1"]'
+      'dialog[aria-label="Annotation 1"]'
     );
     expect(popover?.textContent).toContain("Original note");
     expect(getButtonByLabel(container, "Edit annotation 1").textContent).toBe(
@@ -195,7 +195,7 @@ describe("SourceAnnotator", () => {
     });
 
     expect(
-      container.querySelector('[role="dialog"][aria-label="Annotation 1"]')
+      container.querySelector('dialog[aria-label="Annotation 1"]')
     ).toBeNull();
     expect(pin.getAttribute("aria-expanded")).toBe("false");
 
@@ -210,8 +210,9 @@ describe("SourceAnnotator", () => {
     });
 
     expect(
-      container.querySelector('[role="dialog"][aria-label="Annotation 1"]')
+      container.querySelector('dialog[aria-label="Annotation 1"]')
     ).toBeNull();
+    expect(container.textContent).toContain("Annotations");
 
     act(() => {
       pin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -393,6 +394,63 @@ describe("SourceAnnotator", () => {
     expect(payload.annotations[0]?.targets[0]?.element.selector).toBe("button");
   });
 
+  it("cancels annotation mode with Escape and discards unsent annotations", async () => {
+    const { container } = await createSavedAnnotation("Discard me");
+
+    expect(container.textContent).toContain("Discard me");
+
+    pressEscape();
+
+    expect(getButton(container, "Annotate").getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    expect(container.textContent).not.toContain("Discard me");
+
+    beginAnnotation(container);
+
+    expect(container.textContent).toContain(
+      "Hover an element, click it, then add a note."
+    );
+    expect(container.textContent).not.toContain("Discard me");
+  });
+
+  it("cancels annotation mode with the panel Cancel button", async () => {
+    const { container } = await createSavedAnnotation("Panel discard");
+
+    act(() => {
+      getButton(container, "Cancel").click();
+    });
+
+    expect(getButton(container, "Annotate").getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+
+    beginAnnotation(container);
+
+    expect(container.textContent).not.toContain("Panel discard");
+  });
+
+  it("keeps draft Cancel scoped to the current selection", async () => {
+    const target = createBodyTarget();
+    mockCaptureTarget(createTarget({ text: "Target" }));
+    const container = renderAnnotator();
+
+    beginAnnotation(container);
+    await clickTarget(target);
+
+    act(() => {
+      getButton(container, "Cancel").click();
+    });
+
+    expect(container.querySelector("textarea")).toBeNull();
+    expect(
+      getButton(container, "Annotating").getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(container.textContent).toContain(
+      "Hover an element, click it, then add a note."
+    );
+  });
+
   it("clears copied annotations and does not show stale copied status when reopened", async () => {
     const target = createBodyTarget();
     clipboardMocks.copyTextToClipboard.mockResolvedValue(undefined);
@@ -564,6 +622,14 @@ async function collectCurrentAnnotations(container: Element) {
   await act(async () => {
     getButton(container, "Collect").click();
     await Promise.resolve();
+  });
+}
+
+function pressEscape() {
+  act(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    );
   });
 }
 

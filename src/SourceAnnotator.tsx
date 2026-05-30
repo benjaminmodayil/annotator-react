@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties } from "react";
 import { Toaster, toast } from "sonner";
 import {
   captureAnnotationTarget,
@@ -65,6 +72,264 @@ type ResolvedTarget = {
   frameElement: HTMLIFrameElement | null;
 };
 
+type AnnotatorState = {
+  isAnnotating: boolean;
+  hoverRect: Rect | null;
+  selected: DraftSelection | null;
+  note: string;
+  annotations: StoredAnnotation[];
+  previewedAnnotation: StoredAnnotation | null;
+  status: string | null;
+  linkingAnnotationId: string | null;
+};
+
+type AnnotatorAction =
+  | { type: "reset"; isAnnotating: boolean }
+  | { type: "setHoverRect"; rect: Rect | null }
+  | { type: "setNote"; note: string }
+  | { type: "setStatus"; status: string | null }
+  | { type: "clearPreview" }
+  | { type: "previewAnnotation"; annotation: StoredAnnotation }
+  | { type: "cancelDraft" }
+  | { type: "refreshRects" }
+  | {
+      type: "selectTarget";
+      target: DraftTarget;
+      append: boolean;
+    }
+  | {
+      type: "resolveDraftTarget";
+      element: Element;
+      target: AnnotationTarget | null;
+      status: string;
+    }
+  | { type: "saveAnnotation"; annotation: StoredAnnotation; editingId?: string }
+  | { type: "editAnnotation"; annotation: StoredAnnotation }
+  | { type: "startLinking"; annotationId: string }
+  | {
+      type: "linkTarget";
+      annotationId: string;
+      target: StoredTargetInput;
+      status: string;
+    }
+  | { type: "deleteAnnotation"; annotationId: string }
+  | { type: "closeWithEscape" };
+
+const initialAnnotatorState: AnnotatorState = {
+  isAnnotating: false,
+  hoverRect: null,
+  selected: null,
+  note: "",
+  annotations: [],
+  previewedAnnotation: null,
+  status: null,
+  linkingAnnotationId: null,
+};
+
+function resetSession(isAnnotating: boolean): AnnotatorState {
+  return { ...initialAnnotatorState, isAnnotating };
+}
+
+type AnnotatorActionHandler<T extends AnnotatorAction["type"]> = (
+  state: AnnotatorState,
+  action: Extract<AnnotatorAction, { type: T }>
+) => AnnotatorState;
+
+type AnnotatorActionHandlers = {
+  [Type in AnnotatorAction["type"]]: AnnotatorActionHandler<Type>;
+};
+
+const annotatorActionHandlers = {
+  reset: (_state, action) => resetSession(action.isAnnotating),
+  setHoverRect: (state, action) =>
+    state.hoverRect === action.rect
+      ? state
+      : { ...state, hoverRect: action.rect },
+  setNote: (state, action) =>
+    state.note === action.note ? state : { ...state, note: action.note },
+  setStatus: (state, action) =>
+    state.status === action.status
+      ? state
+      : { ...state, status: action.status },
+  clearPreview: (state) => ({ ...state, previewedAnnotation: null }),
+  previewAnnotation: (state, action) => ({
+    ...state,
+    previewedAnnotation: action.annotation,
+  }),
+  cancelDraft: (state) => ({ ...state, selected: null }),
+  refreshRects: (state) => ({
+    ...state,
+    hoverRect: null,
+    selected: refreshDraftSelectionRects(state.selected),
+    annotations: refreshAnnotationRects(state.annotations),
+  }),
+  selectTarget: (state, action) => selectDraftTarget(state, action),
+  resolveDraftTarget: (state, action) => ({
+    ...state,
+    selected: resolveDraftTarget(state.selected, action),
+    status: action.status,
+  }),
+  saveAnnotation: (state, action) => ({
+    ...state,
+    annotations: action.editingId
+      ? state.annotations.map((item) =>
+          item.id === action.editingId ? action.annotation : item
+        )
+      : [...state.annotations, action.annotation],
+    selected: null,
+    note: "",
+    previewedAnnotation: null,
+    status: action.editingId ? "Annotation updated." : "Annotation saved.",
+  }),
+  editAnnotation: (state, action) => ({
+    ...state,
+    linkingAnnotationId: null,
+    selected: createEditingSelection(action.annotation),
+    note: action.annotation.note,
+    previewedAnnotation: null,
+    status: "Editing annotation.",
+  }),
+  startLinking: (state, action) => ({
+    ...state,
+    selected: null,
+    previewedAnnotation: null,
+    linkingAnnotationId: action.annotationId,
+    status: "Click another element to link it to this annotation.",
+  }),
+  linkTarget: (state, action) => ({
+    ...state,
+    annotations: addTargetToAnnotation(
+      state.annotations,
+      action.annotationId,
+      action.target
+    ),
+    linkingAnnotationId: null,
+    previewedAnnotation: null,
+    status: action.status,
+  }),
+  deleteAnnotation: (state, action) => ({
+    ...state,
+    annotations: state.annotations.filter(
+      (annotation) => annotation.id !== action.annotationId
+    ),
+    selected:
+      state.selected?.editingId === action.annotationId ? null : state.selected,
+    previewedAnnotation:
+      state.previewedAnnotation?.id === action.annotationId
+        ? null
+        : state.previewedAnnotation,
+    linkingAnnotationId:
+      state.linkingAnnotationId === action.annotationId
+        ? null
+        : state.linkingAnnotationId,
+    status: "Annotation deleted.",
+  }),
+  closeWithEscape: (state) =>
+    state.previewedAnnotation
+      ? { ...state, previewedAnnotation: null }
+      : { ...state, isAnnotating: false },
+} satisfies AnnotatorActionHandlers;
+
+function annotatorReducer(
+  state: AnnotatorState,
+  action: AnnotatorAction
+): AnnotatorState {
+  const handler = annotatorActionHandlers[action.type] as (
+    currentState: AnnotatorState,
+    currentAction: AnnotatorAction
+  ) => AnnotatorState;
+  return handler(state, action);
+}
+
+function refreshDraftSelectionRects(
+  selection: DraftSelection | null
+): DraftSelection | null {
+  return selection
+    ? {
+        ...selection,
+        targets: selection.targets.map((targetEntry) => ({
+          ...targetEntry,
+          rect: getRect(targetEntry.element, targetEntry.frameElement),
+        })),
+      }
+    : selection;
+}
+
+function refreshAnnotationRects(
+  annotations: StoredAnnotation[]
+): StoredAnnotation[] {
+  return annotations.map((annotation) => ({
+    ...annotation,
+    targets: annotation.targets.map((targetEntry) => ({
+      ...targetEntry,
+      rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
+    })),
+  }));
+}
+
+function selectDraftTarget(
+  state: AnnotatorState,
+  action: Extract<AnnotatorAction, { type: "selectTarget" }>
+): AnnotatorState {
+  if (
+    action.append &&
+    state.selected &&
+    state.selected.targets.some(
+      (targetEntry) => targetEntry.element === action.target.element
+    )
+  ) {
+    return { ...state, status: "Resolving source…" };
+  }
+
+  const nextSelected =
+    action.append && state.selected
+      ? {
+          ...state.selected,
+          targets: [...state.selected.targets, action.target],
+        }
+      : { targets: [action.target] };
+
+  return {
+    ...state,
+    selected: nextSelected,
+    note: action.append ? state.note : "",
+    status: "Resolving source…",
+  };
+}
+
+function resolveDraftTarget(
+  selection: DraftSelection | null,
+  action: Extract<AnnotatorAction, { type: "resolveDraftTarget" }>
+): DraftSelection | null {
+  return selection
+    ? {
+        ...selection,
+        targets: selection.targets.map((targetEntry) =>
+          targetEntry.element === action.element
+            ? {
+                ...targetEntry,
+                target: action.target ?? targetEntry.target,
+                loading: false,
+              }
+            : targetEntry
+        ),
+      }
+    : selection;
+}
+
+function createEditingSelection(annotation: StoredAnnotation): DraftSelection {
+  return {
+    editingId: annotation.id,
+    targets: annotation.targets.map((targetEntry) => ({
+      element: targetEntry.targetElement,
+      rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
+      frameElement: targetEntry.frameElement,
+      target: targetEntry.data,
+      loading: false,
+    })),
+  };
+}
+
 const ROOT_ATTR = "data-mikuexe-annotator-root";
 const DEFAULT_HOTKEY = "alt+a";
 const DEFAULT_OUTPUT: SourceAnnotatorOutput = "markdown";
@@ -80,72 +345,87 @@ const BLOCKED_INTERACTION_EVENTS = [
   "touchend",
 ] as const;
 
-export function SourceAnnotator({
-  enabled = true,
-  hotkey = DEFAULT_HOTKEY,
-  output = DEFAULT_OUTPUT,
-  target,
-  onCollect,
-  renderToaster = true,
-}: SourceAnnotatorProps) {
-  const [isAnnotating, setIsAnnotating] = useState(false);
-  const [hoverRect, setHoverRect] = useState<Rect | null>(null);
-  const [selected, setSelected] = useState<DraftSelection | null>(null);
-  const [note, setNote] = useState("");
-  const [annotations, setAnnotations] = useState<StoredAnnotation[]>([]);
-  const [previewedAnnotation, setPreviewedAnnotation] =
-    useState<StoredAnnotation | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [linkingAnnotationId, setLinkingAnnotationId] = useState<string | null>(
-    null
-  );
-  const selectedRef = useRef<DraftSelection | null>(null);
+let nextElementKey = 0;
+const elementKeys = new WeakMap<Element, string>();
+const documentKeys = new WeakMap<Document, string>();
+const frameKeys = new WeakMap<HTMLIFrameElement, string>();
 
+function getWeakKey<T extends object>(keys: WeakMap<T, string>, value: T) {
+  const existing = keys.get(value);
+  if (existing) {
+    return existing;
+  }
+
+  const key = String(nextElementKey++);
+  keys.set(value, key);
+  return key;
+}
+
+function getElementKey(element: Element): string {
+  return getWeakKey(elementKeys, element);
+}
+
+function getDraftTargetKey(target: DraftTarget): string {
+  return getElementKey(target.element);
+}
+
+function getStoredTargetKey(target: StoredTarget): string {
+  return getElementKey(target.targetElement);
+}
+
+function getResolvedTargetKey(target: ResolvedTarget): string {
+  const documentKey = target.document
+    ? getWeakKey(documentKeys, target.document)
+    : "no-document";
+  const frameKey = target.frameElement
+    ? getWeakKey(frameKeys, target.frameElement)
+    : "no-frame";
+  return `${documentKey}:${frameKey}`;
+}
+
+export function SourceAnnotator(props: SourceAnnotatorProps) {
+  const { enabled = true, target } = props;
   const resolvedTarget = useResolvedTarget(target);
 
-  selectedRef.current = selected;
+  if (!enabled) {
+    return null;
+  }
 
-  useEffect(() => {
-    setHoverRect(null);
-    setSelected(null);
-    setAnnotations([]);
-    setPreviewedAnnotation(null);
-    setNote("");
-    setStatus(null);
-    setLinkingAnnotationId(null);
-  }, [resolvedTarget.document, resolvedTarget.frameElement]);
+  return (
+    <SourceAnnotatorSession
+      key={getResolvedTargetKey(resolvedTarget)}
+      {...props}
+      enabled={enabled}
+      resolvedTarget={resolvedTarget}
+    />
+  );
+}
 
-  const refreshTrackedRects = useCallback(() => {
-    setHoverRect(null);
-    setSelected((current) =>
-      current
-        ? {
-            ...current,
-            targets: current.targets.map((targetEntry) => ({
-              ...targetEntry,
-              rect: getRect(targetEntry.element, targetEntry.frameElement),
-            })),
-          }
-        : current
-    );
-    setAnnotations((existing) =>
-      existing.map((annotation) => ({
-        ...annotation,
-        targets: annotation.targets.map((targetEntry) => ({
-          ...targetEntry,
-          rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
-        })),
-      }))
-    );
+function SourceAnnotatorSession({
+  hotkey = DEFAULT_HOTKEY,
+  output = DEFAULT_OUTPUT,
+  onCollect,
+  renderToaster = true,
+  resolvedTarget,
+}: SourceAnnotatorProps & {
+  enabled: boolean;
+  resolvedTarget: ResolvedTarget;
+}) {
+  const [state, dispatch] = useReducer(annotatorReducer, initialAnnotatorState);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const { isAnnotating, previewedAnnotation } = state;
+
+  const cancelAnnotationSession = useCallback(() => {
+    dispatch({ type: "reset", isAnnotating: false });
   }, []);
 
-  useEffect(() => {
-    if (!enabled) {
-      setIsAnnotating(false);
-    }
-  }, [enabled]);
+  const toggleAnnotationSession = useCallback(() => {
+    dispatch({ type: "reset", isAnnotating: !stateRef.current.isAnnotating });
+  }, []);
 
-  useAnnotatorHotkey(enabled, hotkey, resolvedTarget.document, setIsAnnotating);
+  useAnnotatorHotkey(hotkey, resolvedTarget.document, toggleAnnotationSession);
 
   const handleElementSelection = useCallback(
     async (
@@ -153,34 +433,37 @@ export function SourceAnnotator({
       frameElement: HTMLIFrameElement | null,
       extendSelection: boolean
     ) => {
+      const { linkingAnnotationId, selected: currentSelected } =
+        stateRef.current;
       if (linkingAnnotationId) {
         const rect = getRect(eventTarget, frameElement);
-        setStatus("Resolving linked element…");
+        dispatch({ type: "setStatus", status: "Resolving linked element…" });
 
         try {
           const targetData = await captureAnnotationTarget(eventTarget);
-          setAnnotations((existing) =>
-            addTargetToAnnotation(existing, linkingAnnotationId, {
+          dispatch({
+            type: "linkTarget",
+            annotationId: linkingAnnotationId,
+            target: {
               targetElement: eventTarget,
               rect,
               frameElement,
               data: targetData,
-            })
-          );
-          setLinkingAnnotationId(null);
-          setPreviewedAnnotation(null);
-          setStatus("Element linked to annotation.");
+            },
+            status: "Element linked to annotation.",
+          });
         } catch {
-          setStatus("Element linked without source info.");
-          setAnnotations((existing) =>
-            addTargetToAnnotation(existing, linkingAnnotationId, {
+          dispatch({
+            type: "linkTarget",
+            annotationId: linkingAnnotationId,
+            target: {
               targetElement: eventTarget,
               rect,
               frameElement,
               data: createFallbackTarget(eventTarget),
-            })
-          );
-          setLinkingAnnotationId(null);
+            },
+            status: "Element linked without source info.",
+          });
         }
 
         return;
@@ -189,195 +472,63 @@ export function SourceAnnotator({
       const rect = getRect(eventTarget, frameElement);
       const shouldAppend =
         extendSelection &&
-        Boolean(selectedRef.current) &&
-        !selectedRef.current?.editingId;
-      setSelected((current) => {
-        if (shouldAppend && current) {
-          if (
-            current.targets.some(
-              (targetEntry) => targetEntry.element === eventTarget
-            )
-          ) {
-            return current;
-          }
-
-          return {
-            ...current,
-            targets: [
-              ...current.targets,
-              {
-                element: eventTarget,
-                rect,
-                frameElement,
-                target: null,
-                loading: true,
-              },
-            ],
-          };
-        }
-
-        return {
-          targets: [
-            {
-              element: eventTarget,
-              rect,
-              frameElement,
-              target: null,
-              loading: true,
-            },
-          ],
-        };
+        Boolean(currentSelected) &&
+        !currentSelected?.editingId;
+      dispatch({
+        type: "selectTarget",
+        append: shouldAppend,
+        target: {
+          element: eventTarget,
+          rect,
+          frameElement,
+          target: null,
+          loading: true,
+        },
       });
-
-      if (!shouldAppend) {
-        setNote("");
-      }
-      setStatus("Resolving source…");
 
       try {
         const targetData = await captureAnnotationTarget(eventTarget);
-        setSelected((current) => {
-          if (!current) {
-            return current;
-          }
-
-          return {
-            ...current,
-            targets: current.targets.map((targetEntry) =>
-              targetEntry.element === eventTarget
-                ? { ...targetEntry, target: targetData, loading: false }
-                : targetEntry
-            ),
-          };
-        });
-        setStatus(
-          targetData.source
+        dispatch({
+          type: "resolveDraftTarget",
+          element: eventTarget,
+          target: targetData,
+          status: targetData.source
             ? "Source captured."
-            : "Element captured without source info."
-        );
-      } catch {
-        setSelected((current) => {
-          if (!current) {
-            return current;
-          }
-
-          return {
-            ...current,
-            targets: current.targets.map((targetEntry) =>
-              targetEntry.element === eventTarget
-                ? { ...targetEntry, loading: false }
-                : targetEntry
-            ),
-          };
+            : "Element captured without source info.",
         });
-        setStatus("Element captured without source info.");
+      } catch {
+        dispatch({
+          type: "resolveDraftTarget",
+          element: eventTarget,
+          target: null,
+          status: "Element captured without source info.",
+        });
       }
     },
-    [linkingAnnotationId]
+    []
   );
 
-  useEffect(() => {
-    if (!enabled || !isAnnotating || !resolvedTarget.document) {
-      setHoverRect(null);
-      return;
-    }
+  useAnnotatorTargetEvents({
+    isAnnotating,
+    resolvedTarget,
+    onElementSelection: handleElementSelection,
+    onHoverRectChange: (rect) => dispatch({ type: "setHoverRect", rect }),
+  });
+  useTrackedRectRefresh({
+    isAnnotating,
+    targetDocument: resolvedTarget.document,
+    onRefresh: () => dispatch({ type: "refreshRects" }),
+  });
 
-    const activeDocument = resolvedTarget.document;
-
-    const onPointerOver = (event: PointerEvent) => {
-      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
-      if (!eventTarget) {
-        setHoverRect(null);
-        return;
-      }
-
-      setHoverRect(getRect(eventTarget, resolvedTarget.frameElement));
-    };
-
-    const suppressInteraction = (event: Event) => {
-      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
-      if (!eventTarget) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-    };
-
-    const onClick = (event: MouseEvent) => {
-      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
-      if (!eventTarget) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-
-      void handleElementSelection(
-        eventTarget,
-        resolvedTarget.frameElement,
-        shouldExtendSelection(event)
-      );
-    };
-
-    const onFramePointerLeave = () => {
-      setHoverRect(null);
-    };
-
-    activeDocument.addEventListener("pointerover", onPointerOver, true);
-    activeDocument.addEventListener("click", onClick, true);
-    BLOCKED_INTERACTION_EVENTS.forEach((eventName) =>
-      activeDocument.addEventListener(eventName, suppressInteraction, true)
-    );
-    resolvedTarget.frameElement?.addEventListener(
-      "pointerleave",
-      onFramePointerLeave
-    );
-
-    return () => {
-      activeDocument.removeEventListener("pointerover", onPointerOver, true);
-      activeDocument.removeEventListener("click", onClick, true);
-      BLOCKED_INTERACTION_EVENTS.forEach((eventName) =>
-        activeDocument.removeEventListener(eventName, suppressInteraction, true)
-      );
-      resolvedTarget.frameElement?.removeEventListener(
-        "pointerleave",
-        onFramePointerLeave
-      );
-    };
-  }, [enabled, handleElementSelection, isAnnotating, resolvedTarget]);
-
-  useEffect(() => {
-    if (!enabled || !isAnnotating || !resolvedTarget.document) {
-      return;
-    }
-
-    const activeDocument = resolvedTarget.document;
-
-    activeDocument.addEventListener("scroll", refreshTrackedRects, true);
-    if (typeof document !== "undefined" && activeDocument !== document) {
-      document.addEventListener("scroll", refreshTrackedRects, true);
-    }
-    window.addEventListener("resize", refreshTrackedRects);
-
-    return () => {
-      activeDocument.removeEventListener("scroll", refreshTrackedRects, true);
-      if (typeof document !== "undefined" && activeDocument !== document) {
-        document.removeEventListener("scroll", refreshTrackedRects, true);
-      }
-      window.removeEventListener("resize", refreshTrackedRects);
-    };
-  }, [enabled, isAnnotating, refreshTrackedRects, resolvedTarget.document]);
-  usePreviewDismissal(
+  useAnnotationEscape(
+    isAnnotating,
     previewedAnnotation,
     resolvedTarget.document,
-    setPreviewedAnnotation
+    () => dispatch({ type: "closeWithEscape" })
   );
 
   const addAnnotation = useCallback(async () => {
-    const current = selectedRef.current;
+    const current = stateRef.current.selected;
     if (
       !current ||
       current.targets.some((targetEntry) => targetEntry.loading)
@@ -385,9 +536,12 @@ export function SourceAnnotator({
       return;
     }
 
-    const trimmedNote = note.trim();
+    const trimmedNote = stateRef.current.note.trim();
     if (!trimmedNote) {
-      setStatus("Add a note before saving this annotation.");
+      dispatch({
+        type: "setStatus",
+        status: "Add a note before saving this annotation.",
+      });
       return;
     }
 
@@ -420,64 +574,29 @@ export function SourceAnnotator({
       })),
     };
 
-    setAnnotations((existing) => {
-      if (!current.editingId) {
-        return [...existing, storedAnnotation];
-      }
-
-      return existing.map((item) =>
-        item.id === current.editingId ? storedAnnotation : item
-      );
+    dispatch({
+      type: "saveAnnotation",
+      annotation: storedAnnotation,
+      editingId: current.editingId,
     });
-    setSelected(null);
-    setNote("");
-    setPreviewedAnnotation(null);
-    setStatus(current.editingId ? "Annotation updated." : "Annotation saved.");
-  }, [note]);
+  }, []);
 
   const editAnnotation = useCallback((annotation: StoredAnnotation) => {
-    setLinkingAnnotationId(null);
-    setSelected({
-      editingId: annotation.id,
-      targets: annotation.targets.map((targetEntry) => ({
-        element: targetEntry.targetElement,
-        rect: getRect(targetEntry.targetElement, targetEntry.frameElement),
-        frameElement: targetEntry.frameElement,
-        target: targetEntry.data,
-        loading: false,
-      })),
-    });
-    setNote(annotation.note);
-    setPreviewedAnnotation(null);
-    setStatus("Editing annotation.");
+    dispatch({ type: "editAnnotation", annotation });
   }, []);
 
   const startLinkingAnnotation = useCallback((annotationId: string) => {
-    setSelected(null);
-    setPreviewedAnnotation(null);
-    setLinkingAnnotationId(annotationId);
-    setStatus("Click another element to link it to this annotation.");
+    dispatch({ type: "startLinking", annotationId });
   }, []);
 
   const deleteAnnotation = useCallback((annotationId: string) => {
-    setAnnotations((existing) =>
-      existing.filter((annotation) => annotation.id !== annotationId)
-    );
-    setSelected((current) =>
-      current?.editingId === annotationId ? null : current
-    );
-    setPreviewedAnnotation((current) =>
-      current?.id === annotationId ? null : current
-    );
-    setLinkingAnnotationId((current) =>
-      current === annotationId ? null : current
-    );
-    setStatus("Annotation deleted.");
+    dispatch({ type: "deleteAnnotation", annotationId });
   }, []);
 
   const collect = useCallback(async () => {
+    const currentAnnotations = stateRef.current.annotations;
     const payload = createAnnotationCollection(
-      stripStoredAnnotations(annotations),
+      stripStoredAnnotations(currentAnnotations),
       getPageContext(resolvedTarget.document)
     );
     const text = formatAnnotationCollection(payload, output);
@@ -485,14 +604,7 @@ export function SourceAnnotator({
     try {
       await copyTextToClipboard(text);
       onCollect?.(payload);
-      setIsAnnotating(false);
-      setSelected(null);
-      setHoverRect(null);
-      setAnnotations([]);
-      setPreviewedAnnotation(null);
-      setNote("");
-      setStatus(null);
-      setLinkingAnnotationId(null);
+      dispatch({ type: "reset", isAnnotating: false });
       toast.success("Annotations copied", {
         description: `${payload.annotations.length} copied to clipboard.`,
       });
@@ -501,22 +613,204 @@ export function SourceAnnotator({
         description:
           error instanceof Error ? error.message : "Clipboard copy failed.",
       });
-      setStatus(
-        error instanceof Error ? error.message : "Clipboard copy failed."
-      );
+      dispatch({
+        type: "setStatus",
+        status:
+          error instanceof Error ? error.message : "Clipboard copy failed.",
+      });
     }
-  }, [annotations, onCollect, output, resolvedTarget.document]);
+  }, [onCollect, output, resolvedTarget.document]);
 
-  if (!enabled) {
-    return null;
-  }
+  return (
+    <SourceAnnotatorOverlay
+      hotkey={hotkey}
+      renderToaster={renderToaster}
+      state={state}
+      onToggle={toggleAnnotationSession}
+      onPreview={(annotationToPreview) =>
+        dispatch({ type: "previewAnnotation", annotation: annotationToPreview })
+      }
+      onClosePreview={() => dispatch({ type: "clearPreview" })}
+      onNoteChange={(nextNote) => dispatch({ type: "setNote", note: nextNote })}
+      onCancelDraft={() => dispatch({ type: "cancelDraft" })}
+      onSaveDraft={addAnnotation}
+      onEdit={editAnnotation}
+      onDelete={deleteAnnotation}
+      onCollect={collect}
+      onLink={startLinkingAnnotation}
+      onCancelSession={cancelAnnotationSession}
+    />
+  );
+}
+
+function useAnnotatorTargetEvents({
+  isAnnotating,
+  resolvedTarget,
+  onElementSelection,
+  onHoverRectChange,
+}: {
+  isAnnotating: boolean;
+  resolvedTarget: ResolvedTarget;
+  onElementSelection: (
+    eventTarget: Element,
+    frameElement: HTMLIFrameElement | null,
+    extendSelection: boolean
+  ) => void;
+  onHoverRectChange: (rect: Rect | null) => void;
+}) {
+  useEffect(() => {
+    if (!isAnnotating || !resolvedTarget.document) {
+      onHoverRectChange(null);
+      return;
+    }
+
+    const activeDocument = resolvedTarget.document;
+
+    const onPointerOver = (event: PointerEvent) => {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      onHoverRectChange(
+        eventTarget ? getRect(eventTarget, resolvedTarget.frameElement) : null
+      );
+    };
+
+    const suppressInteraction = (event: Event) => {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      if (!eventTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+
+    const onClick = (event: MouseEvent) => {
+      const eventTarget = getAnnotatableTarget(event.target, activeDocument);
+      if (!eventTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      onElementSelection(
+        eventTarget,
+        resolvedTarget.frameElement,
+        shouldExtendSelection(event)
+      );
+    };
+
+    const onFramePointerLeave = () => {
+      onHoverRectChange(null);
+    };
+
+    activeDocument.addEventListener("pointerover", onPointerOver, true);
+    activeDocument.addEventListener("click", onClick, true);
+    BLOCKED_INTERACTION_EVENTS.forEach((eventName) =>
+      activeDocument.addEventListener(eventName, suppressInteraction, true)
+    );
+    resolvedTarget.frameElement?.addEventListener(
+      "pointerleave",
+      onFramePointerLeave
+    );
+
+    return () => {
+      activeDocument.removeEventListener("pointerover", onPointerOver, true);
+      activeDocument.removeEventListener("click", onClick, true);
+      BLOCKED_INTERACTION_EVENTS.forEach((eventName) =>
+        activeDocument.removeEventListener(eventName, suppressInteraction, true)
+      );
+      resolvedTarget.frameElement?.removeEventListener(
+        "pointerleave",
+        onFramePointerLeave
+      );
+    };
+  }, [isAnnotating, onElementSelection, onHoverRectChange, resolvedTarget]);
+}
+
+function useTrackedRectRefresh({
+  isAnnotating,
+  targetDocument,
+  onRefresh,
+}: {
+  isAnnotating: boolean;
+  targetDocument: Document | null;
+  onRefresh: () => void;
+}) {
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+
+  useEffect(() => {
+    if (!isAnnotating || !targetDocument) {
+      return;
+    }
+
+    const onRefreshTrackedRects = () => refreshRef.current();
+
+    targetDocument.addEventListener("scroll", onRefreshTrackedRects, true);
+    if (typeof document !== "undefined" && targetDocument !== document) {
+      document.addEventListener("scroll", onRefreshTrackedRects, true);
+    }
+    window.addEventListener("resize", onRefreshTrackedRects);
+
+    return () => {
+      targetDocument.removeEventListener("scroll", onRefreshTrackedRects, true);
+      if (typeof document !== "undefined" && targetDocument !== document) {
+        document.removeEventListener("scroll", onRefreshTrackedRects, true);
+      }
+      window.removeEventListener("resize", onRefreshTrackedRects);
+    };
+  }, [isAnnotating, targetDocument]);
+}
+
+function SourceAnnotatorOverlay({
+  hotkey,
+  renderToaster,
+  state,
+  onToggle,
+  onPreview,
+  onClosePreview,
+  onNoteChange,
+  onCancelDraft,
+  onSaveDraft,
+  onEdit,
+  onDelete,
+  onCollect,
+  onLink,
+  onCancelSession,
+}: {
+  hotkey: string;
+  renderToaster: boolean;
+  state: AnnotatorState;
+  onToggle: () => void;
+  onPreview: (annotation: StoredAnnotation) => void;
+  onClosePreview: () => void;
+  onNoteChange: (note: string) => void;
+  onCancelDraft: () => void;
+  onSaveDraft: () => void;
+  onEdit: (annotation: StoredAnnotation) => void;
+  onDelete: (annotationId: string) => void;
+  onCollect: () => void;
+  onLink: (annotationId: string) => void;
+  onCancelSession: () => void;
+}) {
+  const {
+    isAnnotating,
+    hoverRect,
+    selected,
+    note,
+    annotations,
+    previewedAnnotation,
+    status,
+  } = state;
 
   return (
     <div {...{ [ROOT_ATTR]: "" }} style={styles.root} aria-live="polite">
       {renderToaster ? <Toaster position="bottom-right" richColors /> : null}
       <button
         type="button"
-        onClick={() => setIsAnnotating((current) => !current)}
+        onClick={onToggle}
         style={{
           ...styles.floatingButton,
           ...(isAnnotating ? styles.floatingButtonActive : null),
@@ -528,19 +822,25 @@ export function SourceAnnotator({
       </button>
 
       {isAnnotating && hoverRect ? <Box rect={hoverRect} kind="hover" /> : null}
-      {selected?.targets.map((targetEntry, index) => (
-        <Box key={index} rect={targetEntry.rect} kind="selected" />
-      ))}
+      {isAnnotating
+        ? selected?.targets.map((targetEntry) => (
+            <Box
+              key={getDraftTargetKey(targetEntry)}
+              rect={targetEntry.rect}
+              kind="selected"
+            />
+          ))
+        : null}
       {isAnnotating
         ? annotations.map((annotation, index) =>
-            annotation.targets.map((targetEntry, targetIndex) => (
+            annotation.targets.map((targetEntry) => (
               <Pin
-                key={`${annotation.id}:${targetIndex}`}
+                key={`${annotation.id}:${getStoredTargetKey(targetEntry)}`}
                 annotation={annotation}
                 rect={targetEntry.rect}
                 index={index}
                 isPreviewed={previewedAnnotation?.id === annotation.id}
-                onPreview={setPreviewedAnnotation}
+                onPreview={onPreview}
               />
             ))
           )
@@ -551,27 +851,28 @@ export function SourceAnnotator({
           index={annotations.findIndex(
             (annotation) => annotation.id === previewedAnnotation.id
           )}
-          onEdit={editAnnotation}
-          onDelete={deleteAnnotation}
-          onClose={() => setPreviewedAnnotation(null)}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onClose={onClosePreview}
         />
       ) : null}
 
       <DraftPopover
-        selected={selected}
+        selected={isAnnotating ? selected : null}
         note={note}
-        onNoteChange={setNote}
-        onCancel={() => setSelected(null)}
-        onSave={addAnnotation}
+        onNoteChange={onNoteChange}
+        onCancel={onCancelDraft}
+        onSave={onSaveDraft}
       />
 
       <AnnotationPanel
         isAnnotating={isAnnotating}
         annotations={annotations}
         status={status}
-        onCollect={collect}
-        onLink={startLinkingAnnotation}
-        onDelete={deleteAnnotation}
+        onCollect={onCollect}
+        onLink={onLink}
+        onDelete={onDelete}
+        onCancel={onCancelSession}
       />
     </div>
   );
@@ -636,7 +937,7 @@ function DraftPopover({
 }: {
   selected: DraftSelection | null;
   note: string;
-  onNoteChange: Dispatch<SetStateAction<string>>;
+  onNoteChange: (note: string) => void;
   onCancel: () => void;
   onSave: () => void;
 }) {
@@ -645,11 +946,11 @@ function DraftPopover({
   }
 
   return (
-    <div
+    <dialog
+      open
       style={getPopoverStyle(
         selected.targets[selected.targets.length - 1].rect
       )}
-      role="dialog"
       aria-label="Add source annotation"
     >
       <div style={styles.popoverTitle}>Annotation</div>
@@ -660,9 +961,9 @@ function DraftPopover({
         value={note}
         onChange={(event) => onNoteChange(event.target.value)}
         placeholder="What should change here?"
+        aria-label="Annotation note"
         style={styles.textarea}
         rows={4}
-        autoFocus
       />
       <div style={styles.popoverActions}>
         <button type="button" onClick={onCancel} style={styles.secondaryButton}>
@@ -677,7 +978,7 @@ function DraftPopover({
           {selected.editingId ? "Update note" : "Save note"}
         </button>
       </div>
-    </div>
+    </dialog>
   );
 }
 
@@ -688,6 +989,7 @@ function AnnotationPanel({
   onCollect,
   onLink,
   onDelete,
+  onCancel,
 }: {
   isAnnotating: boolean;
   annotations: StoredAnnotation[];
@@ -695,6 +997,7 @@ function AnnotationPanel({
   onCollect: () => void;
   onLink: (annotationId: string) => void;
   onDelete: (annotationId: string) => void;
+  onCancel: () => void;
 }) {
   if (!isAnnotating) {
     return null;
@@ -742,14 +1045,23 @@ function AnnotationPanel({
           Hover an element, click it, then add a note.
         </p>
       )}
-      <button
-        type="button"
-        onClick={onCollect}
-        style={styles.collectButton}
-        disabled={!annotations.length}
-      >
-        Collect
-      </button>
+      <div style={styles.panelFooter}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={styles.panelCancelButton}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onCollect}
+          style={styles.collectButton}
+          disabled={!annotations.length}
+        >
+          Collect
+        </button>
+      </div>
       {status ? <div style={styles.status}>{status}</div> : null}
     </section>
   );
@@ -771,8 +1083,8 @@ function AnnotationPreview({
   const displayIndex = index >= 0 ? index + 1 : 1;
 
   return (
-    <div
-      role="dialog"
+    <dialog
+      open
       aria-label={`Annotation ${displayIndex}`}
       style={getPreviewStyle(
         annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 }
@@ -814,15 +1126,14 @@ function AnnotationPreview({
       <div style={styles.metaText}>
         {formatStoredAnnotationSummary(annotation)}
       </div>
-    </div>
+    </dialog>
   );
 }
 
 function useAnnotatorHotkey(
-  enabled: boolean,
   hotkey: string,
   targetDocument: Document | null,
-  setIsAnnotating: Dispatch<SetStateAction<boolean>>
+  onToggle: () => void
 ) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -831,7 +1142,7 @@ function useAnnotatorHotkey(
       }
 
       event.preventDefault();
-      setIsAnnotating((current) => enabled && !current);
+      onToggle();
     };
 
     if (typeof document === "undefined") {
@@ -839,27 +1150,31 @@ function useAnnotatorHotkey(
     }
 
     return listenForKeydown(targetDocument, onKeyDown);
-  }, [enabled, hotkey, setIsAnnotating, targetDocument]);
+  }, [hotkey, onToggle, targetDocument]);
 }
 
-function usePreviewDismissal(
+function useAnnotationEscape(
+  isAnnotating: boolean,
   previewedAnnotation: StoredAnnotation | null,
   targetDocument: Document | null,
-  setPreviewedAnnotation: Dispatch<SetStateAction<StoredAnnotation | null>>
+  onEscape: () => void
 ) {
   useEffect(() => {
-    if (!previewedAnnotation) {
+    if (!isAnnotating && !previewedAnnotation) {
       return;
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPreviewedAnnotation(null);
+      if (event.key !== "Escape") {
+        return;
       }
+
+      event.preventDefault();
+      onEscape();
     };
 
     return listenForKeydown(targetDocument, onKeyDown);
-  }, [previewedAnnotation, setPreviewedAnnotation, targetDocument]);
+  }, [isAnnotating, onEscape, previewedAnnotation, targetDocument]);
 }
 
 function listenForKeydown(
@@ -968,10 +1283,10 @@ function useResolvedTarget(
   target: SourceAnnotatorTarget | undefined
 ): ResolvedTarget {
   const [navigationVersion, setNavigationVersion] = useState(0);
-  const resolvedTarget = useMemo(
-    () => resolveTarget(target),
-    [target, navigationVersion]
-  );
+  const resolvedTarget = useMemo(() => {
+    void navigationVersion;
+    return resolveTarget(target);
+  }, [target, navigationVersion]);
   const currentDocumentRef = useRef<Document | null>(resolvedTarget.document);
   currentDocumentRef.current = resolvedTarget.document;
 
@@ -1149,8 +1464,10 @@ function parseHotkey(hotkey: string): ParsedHotkey {
   const parts = hotkey
     .toLowerCase()
     .split("+")
-    .map((part) => part.trim())
-    .filter(Boolean);
+    .flatMap((part) => {
+      const trimmed = part.trim();
+      return trimmed ? [trimmed] : [];
+    });
   const modifierParts = new Set(parts);
   const usesMacMod = modifierParts.has("mod") && isMac();
 
@@ -1336,6 +1653,20 @@ const styles = {
   emptyText: {
     color: "#64748b",
     margin: "6px 0 10px",
+  } satisfies CSSProperties,
+  panelFooter: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  } satisfies CSSProperties,
+  panelCancelButton: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    background: "#ffffff",
+    color: "#334155",
+    padding: "9px 10px",
+    fontWeight: 800,
+    cursor: "pointer",
   } satisfies CSSProperties,
   collectButton: {
     width: "100%",
