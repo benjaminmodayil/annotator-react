@@ -55,6 +55,8 @@ jobs:
       - name: Setup reviewdog for ESLint
         if: always() && github.event_name == 'pull_request' && hashFiles('eslint.sarif') != ''
         uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.21.0
         continue-on-error: true
 
       - name: Reviewdog ESLint PR comments
@@ -82,7 +84,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install Semgrep
-        run: python -m pip install --upgrade semgrep
+        run: python -m pip install --upgrade semgrep==1.164.0
 
       - name: Semgrep SARIF
         id: semgrep_sarif
@@ -97,6 +99,8 @@ jobs:
       - name: Setup reviewdog for Semgrep
         if: always() && github.event_name == 'pull_request' && hashFiles('semgrep.sarif') != ''
         uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.21.0
         continue-on-error: true
 
       - name: Reviewdog Semgrep PR comments
@@ -154,6 +158,8 @@ jobs:
       - name: Setup reviewdog for Fallow
         if: always() && github.event_name == 'pull_request' && hashFiles('fallow.sarif') != ''
         uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: v0.21.0
         continue-on-error: true
 
       - name: Reviewdog Fallow PR comments
@@ -186,4 +192,4 @@ jobs:
           fi
           git fetch origin "$BASE_REF"
           git branch -f "$BASE_REF" FETCH_HEAD 2>/dev/null || true
-          npx react-doctor@latest . --diff "$BASE_REF" --fail-on warning --annotations
+          npx react-doctor@0.2.16 . --diff "$BASE_REF" --fail-on warning --annotations
