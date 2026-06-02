@@ -1,0 +1,115 @@
+rules:
+  # Keep this rule narrow and project-owned. This repo is npm/package-lock based,
+  # so CI and package scripts should stay on npm/npx rather than pnpm/yarn/Bun.
+  - id: project.no-unapproved-package-manager-in-ci
+    languages: [json, yaml]
+    severity: ERROR
+    message: Use npm for this repo; pnpm, yarn, bun, and bunx are not approved in package scripts or workflow commands.
+    pattern-regex: \b(pnpm|yarn|bunx|bun)\b
+    paths:
+      include:
+        - package.json
+        - /.github/workflows/*.yml
+        - /.github/workflows/*.yaml
+
+  - id: project.no-floating-github-action-ref
+    languages: [yaml]
+    severity: ERROR
+    message: Pin GitHub Actions to a stable version or reviewed commit SHA; do not use floating refs like main/master/latest/HEAD.
+    pattern-regex: 'uses:\s*[^\s#]+@(main|master|latest|HEAD)\b'
+    paths:
+      include:
+        - /.github/workflows/*.yml
+        - /.github/workflows/*.yaml
+
+  - id: react.no-raw-dangerously-set-inner-html
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Use an approved sanitized HTML wrapper instead of raw dangerouslySetInnerHTML.
+    pattern: <$TAG dangerouslySetInnerHTML={...} ... />
+
+  - id: node.no-shell-exec-template-string
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Avoid shell execution with template strings; use argument arrays and explicit escaping instead.
+    pattern-either:
+      - patterns:
+          - pattern-inside: |
+              import { ..., exec, ... } from "node:child_process";
+              ...
+          - pattern: exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import { ..., exec, ... } from "child_process";
+              ...
+          - pattern: exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import { ..., execSync, ... } from "node:child_process";
+              ...
+          - pattern: execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import { ..., execSync, ... } from "child_process";
+              ...
+          - pattern: execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const { ..., exec, ... } = require("node:child_process");
+              ...
+          - pattern: exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const { ..., exec, ... } = require("child_process");
+              ...
+          - pattern: exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const { ..., execSync, ... } = require("node:child_process");
+              ...
+          - pattern: execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const { ..., execSync, ... } = require("child_process");
+              ...
+          - pattern: execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.exec(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.execSync(`...`, ...)
+      - patterns:
+          - pattern-inside: |
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.execSync(`...`, ...)

@@ -74,6 +74,48 @@ jobs:
         if: always() && steps.eslint_sarif.outputs.status != '0'
         run: exit 1
 
+      - name: Setup Python for Semgrep
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install Semgrep
+        run: python -m pip install --upgrade semgrep
+
+      - name: Semgrep SARIF
+        id: semgrep_sarif
+        shell: bash
+        run: |
+          set +e
+          npm run semgrep:sarif
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Setup reviewdog for Semgrep
+        if: always() && github.event_name == 'pull_request' && hashFiles('semgrep.sarif') != ''
+        uses: reviewdog/action-setup@v1
+        continue-on-error: true
+
+      - name: Reviewdog Semgrep PR comments
+        if: always() && github.event_name == 'pull_request' && hashFiles('semgrep.sarif') != ''
+        continue-on-error: true
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          reviewdog \
+            -f=sarif \
+            -name=semgrep \
+            -reporter=github-pr-review \
+            -filter-mode=added \
+            -level=error \
+            < semgrep.sarif
+
+      - name: Fail on Semgrep findings
+        if: always() && steps.semgrep_sarif.outputs.status != '0'
+        run: exit 1
+
       - name: Typecheck
         run: npm run typecheck
 

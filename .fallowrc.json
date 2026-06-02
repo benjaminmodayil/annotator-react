@@ -12,7 +12,19 @@
     "coverage/**",
     "examples/*/node_modules/**",
     "examples/*/dist/**",
+    ".puli/eslint/**",
     ".fallow/**"
+  ],
+  "ignoreExports": [
+    {
+      "file": ".puli/profiles.mjs",
+      "exports": [
+        "baseProfile",
+        "brutalProfile",
+        "packageProfile",
+        "strictAppProfile"
+      ]
+    }
   ],
   "ignoreDependencies": [
     "@arethetypeswrong/cli",
