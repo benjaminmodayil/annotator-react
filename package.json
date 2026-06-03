@@ -73,6 +73,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:sarif": "eslint . --max-warnings=0 --format @microsoft/eslint-formatter-sarif --output-file eslint.sarif",
     "pack:dry-run": "npm pack --dry-run",
+    "semgrep": "semgrep scan --config .puli/semgrep --error",
+    "semgrep:sarif": "semgrep scan --config .puli/semgrep --sarif --output semgrep.sarif --error",
     "package:check": "publint",
     "prepack": "npm run build",
     "prepare": "husky || true",

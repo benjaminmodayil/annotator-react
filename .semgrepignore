@@ -1,0 +1,18 @@
+# Generated/vendor/cache outputs
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.vite/
+*.min.js
+.fallow/
+.tmp/
+examples/*/node_modules/
+examples/*/dist/
+
+# Preserve repo ignore intent
+.npmrc
+.DS_Store
+*.sarif
+*.tgz
