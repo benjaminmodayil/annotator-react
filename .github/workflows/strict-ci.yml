@@ -145,12 +145,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          npx fallow audit \
-            --changed-since "origin/${BASE_REF}" \
-            --format sarif \
-            --fail-on-issues \
-            --quiet \
-            > fallow.sarif
+          npm run fallow:sarif
           status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
