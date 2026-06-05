@@ -71,7 +71,7 @@ jobs:
             -name=eslint \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=error \
+            -fail-level=error \
             < eslint.sarif
 
       - name: Setup Python for Semgrep
@@ -111,7 +111,7 @@ jobs:
             -name=semgrep \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=error \
+            -fail-level=error \
             < semgrep.sarif
 
       - name: Typecheck
@@ -203,7 +203,7 @@ jobs:
             -name=fallow \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=warning \
+            -fail-level=warning \
             < fallow.sarif
 
       - name: React Doctor
@@ -228,9 +228,12 @@ jobs:
 
           check_gate() {
             local name="$1"
-            local status="$2"
+            local status="${2-}"
 
-            if [[ -n "$status" && "$status" != "0" ]]; then
+            if [[ -z "$status" ]]; then
+              echo "::error title=${name} missing status::${name} did not report a captured status"
+              failed=1
+            elif [[ "$status" != "0" ]]; then
               echo "::error title=${name} failed::${name} exited with status ${status}"
               failed=1
             fi
