@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
   pull-requests: write
 
 env:
@@ -71,12 +70,8 @@ jobs:
             -name=eslint \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=error \
+            -fail-level=error \
             < eslint.sarif
-
-      - name: Fail on ESLint findings
-        if: always() && steps.eslint_sarif.outputs.status != '0'
-        run: exit 1
 
       - name: Setup Python for Semgrep
         uses: actions/setup-python@v6
@@ -115,42 +110,75 @@ jobs:
             -name=semgrep \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=error \
+            -fail-level=error \
             < semgrep.sarif
 
-      - name: Fail on Semgrep findings
-        if: always() && steps.semgrep_sarif.outputs.status != '0'
-        run: exit 1
-
       - name: Typecheck
-        run: npm run typecheck
+        id: typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Test
-        run: npm test
+        id: test
+        shell: bash
+        run: |
+          set +e
+          npm test
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Build
-        run: npm run build
+        id: build
+        shell: bash
+        run: |
+          set +e
+          npm run build
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Example build
-        run: npm run example:build
+        id: example_build
+        shell: bash
+        run: |
+          set +e
+          npm run example:build
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Package checks
-        run: npm run package:check
+        id: package_checks
+        shell: bash
+        run: |
+          set +e
+          npm run package:check
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Pack dry run
-        run: npm run pack:dry-run
+        id: pack_dry_run
+        shell: bash
+        run: |
+          set +e
+          npm run pack:dry-run
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Fallow SARIF
         id: fallow_sarif
         shell: bash
         run: |
           set +e
-          npx fallow audit \
-            --changed-since "origin/${BASE_REF}" \
-            --format sarif \
-            --fail-on-issues \
-            --quiet \
-            > fallow.sarif
+          npm run fallow:sarif
           status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
@@ -174,12 +202,8 @@ jobs:
             -name=fallow \
             -reporter=github-pr-review \
             -filter-mode=added \
-            -level=warning \
+            -fail-level=warning \
             < fallow.sarif
-
-      - name: Fail on Fallow findings
-        if: always() && steps.fallow_sarif.outputs.status != '0'
-        run: exit 1
 
       - name: React Doctor
         if: github.event_name == 'pull_request' && hashFiles('**/*.jsx', '**/*.tsx') != ''
@@ -193,3 +217,35 @@ jobs:
           git fetch origin "$BASE_REF"
           git branch -f "$BASE_REF" FETCH_HEAD 2>/dev/null || true
           npx react-doctor@0.2.16 . --diff "$BASE_REF" --fail-on warning --annotations
+
+      - name: Enforce captured strict gate failures
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          failed=0
+
+          check_gate() {
+            local name="$1"
+            local status="${2-}"
+
+            if [[ -z "$status" ]]; then
+              echo "::error title=${name} missing status::${name} did not report a captured status"
+              failed=1
+            elif [[ "$status" != "0" ]]; then
+              echo "::error title=${name} failed::${name} exited with status ${status}"
+              failed=1
+            fi
+          }
+
+          check_gate "ESLint SARIF" "${{ steps.eslint_sarif.outputs.status }}"
+          check_gate "Semgrep SARIF" "${{ steps.semgrep_sarif.outputs.status }}"
+          check_gate "Typecheck" "${{ steps.typecheck.outputs.status }}"
+          check_gate "Test" "${{ steps.test.outputs.status }}"
+          check_gate "Build" "${{ steps.build.outputs.status }}"
+          check_gate "Example build" "${{ steps.example_build.outputs.status }}"
+          check_gate "Package checks" "${{ steps.package_checks.outputs.status }}"
+          check_gate "Pack dry run" "${{ steps.pack_dry_run.outputs.status }}"
+          check_gate "Fallow SARIF" "${{ steps.fallow_sarif.outputs.status }}"
+
+          exit "$failed"
