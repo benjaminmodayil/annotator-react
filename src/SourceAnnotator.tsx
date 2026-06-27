@@ -1637,7 +1637,6 @@ function usePreferredColorScheme(): ColorScheme {
       syncColorScheme(event.matches);
     };
 
-    syncColorScheme(mediaQuery.matches);
     if (typeof mediaQuery.addEventListener === "function") {
       mediaQuery.addEventListener("change", handleChange);
 
