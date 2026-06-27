@@ -1559,8 +1559,14 @@ type AnnotatorPalette = {
 
 const DARK_MODE_QUERY = "(prefers-color-scheme: dark)";
 
+const basePalette = {
+  pinBackground: "#f97316",
+  pinText: "#ffffff",
+} satisfies Pick<AnnotatorPalette, "pinBackground" | "pinText">;
+
 const colorPalettes = {
   light: {
+    ...basePalette,
     colorScheme: "light",
     text: "#0f172a",
     mutedText: "#64748b",
@@ -1584,10 +1590,9 @@ const colorPalettes = {
     dangerBorder: "#fecaca",
     dangerBackground: "#fff1f2",
     dangerText: "#be123c",
-    pinBackground: "#f97316",
-    pinText: "#ffffff",
   },
   dark: {
+    ...basePalette,
     colorScheme: "dark",
     text: "#e2e8f0",
     mutedText: "#94a3b8",
@@ -1611,14 +1616,16 @@ const colorPalettes = {
     dangerBorder: "#be123c",
     dangerBackground: "#4c0519",
     dangerText: "#fecdd3",
-    pinBackground: "#f97316",
-    pinText: "#ffffff",
   },
 } satisfies Record<ColorScheme, AnnotatorPalette>;
 
 function usePreferredColorScheme(): ColorScheme {
-  const [colorScheme, setColorScheme] = useState<ColorScheme>(
-    getPreferredColorScheme
+  const [colorScheme, setColorScheme] = useState<ColorScheme>(() =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(DARK_MODE_QUERY).matches
+      ? "dark"
+      : "light"
   );
 
   useEffect(() => {
@@ -1630,37 +1637,18 @@ function usePreferredColorScheme(): ColorScheme {
     }
 
     const mediaQuery = window.matchMedia(DARK_MODE_QUERY);
-    const syncColorScheme = (matches: boolean) => {
-      setColorScheme(matches ? "dark" : "light");
-    };
     const handleChange = (event: MediaQueryListEvent) => {
-      syncColorScheme(event.matches);
+      setColorScheme(event.matches ? "dark" : "light");
     };
 
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleChange);
-
-      return () => {
-        mediaQuery.removeEventListener("change", handleChange);
-      };
-    }
-
-    mediaQuery.addListener(handleChange);
+    mediaQuery.addEventListener("change", handleChange);
 
     return () => {
-      mediaQuery.removeListener(handleChange);
+      mediaQuery.removeEventListener("change", handleChange);
     };
   }, []);
 
   return colorScheme;
-}
-
-function getPreferredColorScheme(): ColorScheme {
-  return typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(DARK_MODE_QUERY).matches
-    ? "dark"
-    : "light";
 }
 
 function createStyles(palette: AnnotatorPalette) {
