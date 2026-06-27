@@ -804,10 +804,17 @@ function SourceAnnotatorOverlay({
     previewedAnnotation,
     status,
   } = state;
+  const colorScheme = usePreferredColorScheme();
+  const styles = useMemo(
+    () => createStyles(colorPalettes[colorScheme]),
+    [colorScheme]
+  );
 
   return (
     <div {...{ [ROOT_ATTR]: "" }} style={styles.root} aria-live="polite">
-      {renderToaster ? <Toaster position="bottom-right" richColors /> : null}
+      {renderToaster ? (
+        <Toaster position="bottom-right" richColors theme={colorScheme} />
+      ) : null}
       <button
         type="button"
         onClick={onToggle}
@@ -821,13 +828,16 @@ function SourceAnnotatorOverlay({
         {isAnnotating ? "Annotating" : "Annotate"}
       </button>
 
-      {isAnnotating && hoverRect ? <Box rect={hoverRect} kind="hover" /> : null}
+      {isAnnotating && hoverRect ? (
+        <Box rect={hoverRect} kind="hover" styles={styles} />
+      ) : null}
       {isAnnotating
         ? selected?.targets.map((targetEntry) => (
             <Box
               key={getDraftTargetKey(targetEntry)}
               rect={targetEntry.rect}
               kind="selected"
+              styles={styles}
             />
           ))
         : null}
@@ -841,6 +851,7 @@ function SourceAnnotatorOverlay({
                 index={index}
                 isPreviewed={previewedAnnotation?.id === annotation.id}
                 onPreview={onPreview}
+                styles={styles}
               />
             ))
           )
@@ -854,6 +865,7 @@ function SourceAnnotatorOverlay({
           onEdit={onEdit}
           onDelete={onDelete}
           onClose={onClosePreview}
+          styles={styles}
         />
       ) : null}
 
@@ -863,6 +875,7 @@ function SourceAnnotatorOverlay({
         onNoteChange={onNoteChange}
         onCancel={onCancelDraft}
         onSave={onSaveDraft}
+        styles={styles}
       />
 
       <AnnotationPanel
@@ -873,12 +886,21 @@ function SourceAnnotatorOverlay({
         onLink={onLink}
         onDelete={onDelete}
         onCancel={onCancelSession}
+        styles={styles}
       />
     </div>
   );
 }
 
-function Box({ rect, kind }: { rect: Rect; kind: "hover" | "selected" }) {
+function Box({
+  rect,
+  kind,
+  styles,
+}: {
+  rect: Rect;
+  kind: "hover" | "selected";
+  styles: AnnotatorStyles;
+}) {
   return (
     <div
       data-mikuexe-annotator-box={kind}
@@ -900,12 +922,14 @@ function Pin({
   index,
   isPreviewed,
   onPreview,
+  styles,
 }: {
   annotation: StoredAnnotation;
   rect: Rect;
   index: number;
   isPreviewed: boolean;
   onPreview: (annotation: StoredAnnotation) => void;
+  styles: AnnotatorStyles;
 }) {
   return (
     <button
@@ -934,12 +958,14 @@ function DraftPopover({
   onNoteChange,
   onCancel,
   onSave,
+  styles,
 }: {
   selected: DraftSelection | null;
   note: string;
   onNoteChange: (note: string) => void;
   onCancel: () => void;
   onSave: () => void;
+  styles: AnnotatorStyles;
 }) {
   if (!selected?.targets.length) {
     return null;
@@ -949,7 +975,8 @@ function DraftPopover({
     <dialog
       open
       style={getPopoverStyle(
-        selected.targets[selected.targets.length - 1].rect
+        selected.targets[selected.targets.length - 1].rect,
+        styles
       )}
       aria-label="Add source annotation"
     >
@@ -990,6 +1017,7 @@ function AnnotationPanel({
   onLink,
   onDelete,
   onCancel,
+  styles,
 }: {
   isAnnotating: boolean;
   annotations: StoredAnnotation[];
@@ -998,6 +1026,7 @@ function AnnotationPanel({
   onLink: (annotationId: string) => void;
   onDelete: (annotationId: string) => void;
   onCancel: () => void;
+  styles: AnnotatorStyles;
 }) {
   if (!isAnnotating) {
     return null;
@@ -1006,7 +1035,7 @@ function AnnotationPanel({
   return (
     <section style={styles.panel} aria-label="Collected annotations">
       <div style={styles.panelHeader}>
-        <strong>Annotations</strong>
+        <strong style={styles.panelTitle}>Annotations</strong>
         <span style={styles.badge}>{annotations.length}</span>
       </div>
       {annotations.length ? (
@@ -1073,12 +1102,14 @@ function AnnotationPreview({
   onEdit,
   onDelete,
   onClose,
+  styles,
 }: {
   annotation: StoredAnnotation;
   index: number;
   onEdit: (annotation: StoredAnnotation) => void;
   onDelete: (annotationId: string) => void;
   onClose: () => void;
+  styles: AnnotatorStyles;
 }) {
   const displayIndex = index >= 0 ? index + 1 : 1;
 
@@ -1087,7 +1118,8 @@ function AnnotationPreview({
       open
       aria-label={`Annotation ${displayIndex}`}
       style={getPreviewStyle(
-        annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 }
+        annotation.targets[0]?.rect ?? { top: 8, left: 8, width: 0, height: 0 },
+        styles
       )}
     >
       <div style={styles.previewHeader}>
@@ -1356,7 +1388,7 @@ function isElement(
   return target instanceof elementConstructor;
 }
 
-function getPopoverStyle(rect: Rect): CSSProperties {
+function getPopoverStyle(rect: Rect, styles: AnnotatorStyles): CSSProperties {
   const top = Math.min(window.innerHeight - 260, rect.top + rect.height + 8);
   const left = Math.min(window.innerWidth - 340, Math.max(8, rect.left));
 
@@ -1367,7 +1399,7 @@ function getPopoverStyle(rect: Rect): CSSProperties {
   };
 }
 
-function getPreviewStyle(rect: Rect): CSSProperties {
+function getPreviewStyle(rect: Rect, styles: AnnotatorStyles): CSSProperties {
   const top = Math.min(window.innerHeight - 120, rect.top + rect.height + 8);
   const left = Math.min(window.innerWidth - 260, Math.max(8, rect.left));
 
@@ -1495,265 +1527,435 @@ function isMac(): boolean {
 const baseFont =
   '13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
-const styles = {
-  root: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 2147483647,
-    pointerEvents: "none",
-    font: baseFont,
-    color: "#0f172a",
-  } satisfies CSSProperties,
-  floatingButton: {
-    position: "fixed",
-    right: 16,
-    bottom: 16,
-    pointerEvents: "auto",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#cbd5e1",
-    background: "#ffffff",
-    color: "#0f172a",
-    borderRadius: 999,
-    padding: "10px 14px",
-    font: baseFont,
-    fontWeight: 700,
-    boxShadow: "0 10px 25px rgba(15, 23, 42, 0.16)",
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  floatingButtonActive: {
-    background: "#0f172a",
-    color: "#ffffff",
-    borderColor: "#0f172a",
-  } satisfies CSSProperties,
-  box: {
-    position: "fixed",
-    borderRadius: 6,
-    pointerEvents: "none",
-    boxSizing: "border-box",
-  } satisfies CSSProperties,
-  hoverBox: {
-    border: "2px solid #38bdf8",
-    background: "rgba(56, 189, 248, 0.08)",
-  } satisfies CSSProperties,
-  selectedBox: {
-    border: "2px solid #f97316",
-    background: "rgba(249, 115, 22, 0.1)",
-  } satisfies CSSProperties,
-  popover: {
-    position: "fixed",
-    zIndex: 2,
-    width: 320,
-    pointerEvents: "auto",
-    background: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: 12,
-    padding: 12,
-    boxShadow: "0 18px 45px rgba(15, 23, 42, 0.22)",
-  } satisfies CSSProperties,
-  popoverTitle: {
-    fontWeight: 800,
-    marginBottom: 4,
-  } satisfies CSSProperties,
-  metaText: {
-    color: "#64748b",
-    fontSize: 12,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  } satisfies CSSProperties,
-  textarea: {
-    width: "100%",
-    boxSizing: "border-box",
-    marginTop: 10,
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    padding: 10,
-    resize: "vertical",
-    font: baseFont,
-  } satisfies CSSProperties,
-  popoverActions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 10,
-  } satisfies CSSProperties,
-  secondaryButton: {
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    background: "#ffffff",
-    padding: "7px 10px",
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  primaryButton: {
-    border: "1px solid #0f172a",
-    borderRadius: 8,
-    background: "#0f172a",
-    color: "#ffffff",
-    padding: "7px 10px",
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  panel: {
-    position: "fixed",
-    zIndex: 1,
-    right: 16,
-    bottom: 68,
-    width: 300,
-    pointerEvents: "auto",
-    background: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: 12,
-    padding: 12,
-    boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
-  } satisfies CSSProperties,
-  panelHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  } satisfies CSSProperties,
-  badge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 999,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#e2e8f0",
-    color: "#334155",
-    fontWeight: 700,
-    fontSize: 12,
-  } satisfies CSSProperties,
-  annotationList: {
-    listStyle: "decimal",
-    margin: "0 0 10px 18px",
-    padding: 0,
-    maxHeight: 180,
-    overflow: "auto",
-  } satisfies CSSProperties,
-  annotationItem: {
-    display: "grid",
-    gap: 8,
-    alignItems: "start",
-    marginBottom: 8,
-  } satisfies CSSProperties,
-  annotationContent: {
-    minWidth: 0,
-  } satisfies CSSProperties,
-  annotationActions: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  } satisfies CSSProperties,
-  noteText: {
-    color: "#0f172a",
-    fontWeight: 650,
-    overflowWrap: "anywhere",
-  } satisfies CSSProperties,
-  emptyText: {
-    color: "#64748b",
-    margin: "6px 0 10px",
-  } satisfies CSSProperties,
-  panelFooter: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
-  } satisfies CSSProperties,
-  panelCancelButton: {
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    background: "#ffffff",
-    color: "#334155",
-    padding: "9px 10px",
-    fontWeight: 800,
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  collectButton: {
-    width: "100%",
-    border: "1px solid #0f172a",
-    borderRadius: 8,
-    background: "#0f172a",
-    color: "#ffffff",
-    padding: "9px 10px",
-    fontWeight: 800,
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  status: {
-    marginTop: 8,
-    color: "#475569",
-    fontSize: 12,
-  } satisfies CSSProperties,
-  linkButton: {
-    border: "1px solid #bfdbfe",
-    borderRadius: 999,
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    padding: "4px 7px",
-    fontSize: 11,
-    fontWeight: 750,
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  deleteButton: {
-    border: "1px solid #fecaca",
-    borderRadius: 999,
-    background: "#fff1f2",
-    color: "#be123c",
-    padding: "4px 7px",
-    fontSize: 11,
-    fontWeight: 750,
-    cursor: "pointer",
-  } satisfies CSSProperties,
-  preview: {
-    position: "fixed",
-    maxWidth: 240,
-    pointerEvents: "auto",
-    background: "#ffffff",
-    border: "1px solid #cbd5e1",
-    borderRadius: 10,
-    padding: 10,
-    boxShadow: "0 14px 35px rgba(15, 23, 42, 0.18)",
-  } satisfies CSSProperties,
-  previewHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 6,
-  } satisfies CSSProperties,
-  previewTitle: {
-    color: "#475569",
-    fontSize: 12,
-    fontWeight: 800,
-  } satisfies CSSProperties,
-  previewActions: {
-    display: "inline-flex",
-    gap: 6,
-  } satisfies CSSProperties,
-  iconButton: {
-    width: 26,
-    height: 26,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    lineHeight: 1,
-  } satisfies CSSProperties,
-  pin: {
-    position: "fixed",
-    border: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 999,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    pointerEvents: "auto",
-    background: "#f97316",
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: 800,
-    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.2)",
-    cursor: "pointer",
-    padding: 0,
-  } satisfies CSSProperties,
+type ColorScheme = "light" | "dark";
+
+type AnnotatorPalette = {
+  colorScheme: ColorScheme;
+  text: string;
+  mutedText: string;
+  subtleText: string;
+  surface: string;
+  activeSurface: string;
+  activeText: string;
+  border: string;
+  activeBorder: string;
+  shadow: string;
+  floatingShadow: string;
+  hoverBorder: string;
+  hoverBackground: string;
+  selectedBorder: string;
+  selectedBackground: string;
+  badgeBackground: string;
+  badgeText: string;
+  linkBorder: string;
+  linkBackground: string;
+  linkText: string;
+  dangerBorder: string;
+  dangerBackground: string;
+  dangerText: string;
+  pinBackground: string;
+  pinText: string;
 };
+
+const DARK_MODE_QUERY = "(prefers-color-scheme: dark)";
+
+const colorPalettes = {
+  light: {
+    colorScheme: "light",
+    text: "#0f172a",
+    mutedText: "#64748b",
+    subtleText: "#475569",
+    surface: "#ffffff",
+    activeSurface: "#0f172a",
+    activeText: "#ffffff",
+    border: "#cbd5e1",
+    activeBorder: "#0f172a",
+    shadow: "rgba(15, 23, 42, 0.18)",
+    floatingShadow: "rgba(15, 23, 42, 0.16)",
+    hoverBorder: "#38bdf8",
+    hoverBackground: "rgba(56, 189, 248, 0.08)",
+    selectedBorder: "#f97316",
+    selectedBackground: "rgba(249, 115, 22, 0.1)",
+    badgeBackground: "#e2e8f0",
+    badgeText: "#334155",
+    linkBorder: "#bfdbfe",
+    linkBackground: "#eff6ff",
+    linkText: "#1d4ed8",
+    dangerBorder: "#fecaca",
+    dangerBackground: "#fff1f2",
+    dangerText: "#be123c",
+    pinBackground: "#f97316",
+    pinText: "#ffffff",
+  },
+  dark: {
+    colorScheme: "dark",
+    text: "#e2e8f0",
+    mutedText: "#94a3b8",
+    subtleText: "#cbd5e1",
+    surface: "#0f172a",
+    activeSurface: "#e2e8f0",
+    activeText: "#0f172a",
+    border: "#334155",
+    activeBorder: "#e2e8f0",
+    shadow: "rgba(0, 0, 0, 0.42)",
+    floatingShadow: "rgba(0, 0, 0, 0.36)",
+    hoverBorder: "#38bdf8",
+    hoverBackground: "rgba(56, 189, 248, 0.16)",
+    selectedBorder: "#fb923c",
+    selectedBackground: "rgba(251, 146, 60, 0.18)",
+    badgeBackground: "#334155",
+    badgeText: "#e2e8f0",
+    linkBorder: "#2563eb",
+    linkBackground: "#172554",
+    linkText: "#bfdbfe",
+    dangerBorder: "#be123c",
+    dangerBackground: "#4c0519",
+    dangerText: "#fecdd3",
+    pinBackground: "#f97316",
+    pinText: "#ffffff",
+  },
+} satisfies Record<ColorScheme, AnnotatorPalette>;
+
+function usePreferredColorScheme(): ColorScheme {
+  const [colorScheme, setColorScheme] = useState<ColorScheme>(
+    getPreferredColorScheme
+  );
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(DARK_MODE_QUERY);
+    const syncColorScheme = (matches: boolean) => {
+      setColorScheme(matches ? "dark" : "light");
+    };
+    const handleChange = (event: MediaQueryListEvent) => {
+      syncColorScheme(event.matches);
+    };
+
+    syncColorScheme(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+
+      return () => {
+        mediaQuery.removeEventListener("change", handleChange);
+      };
+    }
+
+    mediaQuery.addListener(handleChange);
+
+    return () => {
+      mediaQuery.removeListener(handleChange);
+    };
+  }, []);
+
+  return colorScheme;
+}
+
+function getPreferredColorScheme(): ColorScheme {
+  return typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(DARK_MODE_QUERY).matches
+    ? "dark"
+    : "light";
+}
+
+function createStyles(palette: AnnotatorPalette) {
+  return {
+    root: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 2147483647,
+      pointerEvents: "none",
+      font: baseFont,
+      color: palette.text,
+      colorScheme: palette.colorScheme,
+    } satisfies CSSProperties,
+    floatingButton: {
+      position: "fixed",
+      right: 16,
+      bottom: 16,
+      pointerEvents: "auto",
+      borderWidth: 1,
+      borderStyle: "solid",
+      borderColor: palette.border,
+      background: palette.surface,
+      color: palette.text,
+      borderRadius: 999,
+      padding: "10px 14px",
+      font: baseFont,
+      fontWeight: 700,
+      boxShadow: `0 10px 25px ${palette.floatingShadow}`,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    floatingButtonActive: {
+      background: palette.activeSurface,
+      color: palette.activeText,
+      borderColor: palette.activeBorder,
+    } satisfies CSSProperties,
+    box: {
+      position: "fixed",
+      borderRadius: 6,
+      pointerEvents: "none",
+      boxSizing: "border-box",
+      color: palette.text,
+    } satisfies CSSProperties,
+    hoverBox: {
+      border: `2px solid ${palette.hoverBorder}`,
+      background: palette.hoverBackground,
+    } satisfies CSSProperties,
+    selectedBox: {
+      border: `2px solid ${palette.selectedBorder}`,
+      background: palette.selectedBackground,
+    } satisfies CSSProperties,
+    popover: {
+      position: "fixed",
+      zIndex: 2,
+      width: 320,
+      pointerEvents: "auto",
+      background: palette.surface,
+      border: `1px solid ${palette.border}`,
+      borderRadius: 12,
+      padding: 12,
+      boxShadow: `0 18px 45px ${palette.shadow}`,
+      color: palette.text,
+    } satisfies CSSProperties,
+    popoverTitle: {
+      color: palette.text,
+      fontWeight: 800,
+      marginBottom: 4,
+    } satisfies CSSProperties,
+    metaText: {
+      color: palette.mutedText,
+      fontSize: 12,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    } satisfies CSSProperties,
+    textarea: {
+      width: "100%",
+      boxSizing: "border-box",
+      marginTop: 10,
+      border: `1px solid ${palette.border}`,
+      borderRadius: 8,
+      padding: 10,
+      resize: "vertical",
+      font: baseFont,
+      background: palette.surface,
+      color: palette.text,
+      caretColor: palette.text,
+      colorScheme: palette.colorScheme,
+    } satisfies CSSProperties,
+    popoverActions: {
+      display: "flex",
+      justifyContent: "flex-end",
+      gap: 8,
+      marginTop: 10,
+      color: palette.text,
+    } satisfies CSSProperties,
+    secondaryButton: {
+      border: `1px solid ${palette.border}`,
+      borderRadius: 8,
+      background: palette.surface,
+      color: palette.text,
+      padding: "7px 10px",
+      font: baseFont,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    primaryButton: {
+      border: `1px solid ${palette.activeBorder}`,
+      borderRadius: 8,
+      background: palette.activeSurface,
+      color: palette.activeText,
+      padding: "7px 10px",
+      font: baseFont,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    panel: {
+      position: "fixed",
+      zIndex: 1,
+      right: 16,
+      bottom: 68,
+      width: 300,
+      pointerEvents: "auto",
+      background: palette.surface,
+      border: `1px solid ${palette.border}`,
+      borderRadius: 12,
+      padding: 12,
+      boxShadow: `0 18px 45px ${palette.shadow}`,
+      color: palette.text,
+    } satisfies CSSProperties,
+    panelHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+      color: palette.text,
+    } satisfies CSSProperties,
+    panelTitle: {
+      color: palette.text,
+    } satisfies CSSProperties,
+    badge: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 999,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: palette.badgeBackground,
+      color: palette.badgeText,
+      fontWeight: 700,
+      fontSize: 12,
+    } satisfies CSSProperties,
+    annotationList: {
+      listStyle: "decimal",
+      margin: "0 0 10px 18px",
+      padding: 0,
+      maxHeight: 180,
+      overflow: "auto",
+      color: palette.text,
+    } satisfies CSSProperties,
+    annotationItem: {
+      display: "grid",
+      gap: 8,
+      alignItems: "start",
+      marginBottom: 8,
+      color: palette.text,
+    } satisfies CSSProperties,
+    annotationContent: {
+      minWidth: 0,
+      color: palette.text,
+    } satisfies CSSProperties,
+    annotationActions: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      color: palette.text,
+    } satisfies CSSProperties,
+    noteText: {
+      color: palette.text,
+      fontWeight: 650,
+      overflowWrap: "anywhere",
+    } satisfies CSSProperties,
+    emptyText: {
+      color: palette.mutedText,
+      margin: "6px 0 10px",
+    } satisfies CSSProperties,
+    panelFooter: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 8,
+      color: palette.text,
+    } satisfies CSSProperties,
+    panelCancelButton: {
+      border: `1px solid ${palette.border}`,
+      borderRadius: 8,
+      background: palette.surface,
+      color: palette.text,
+      padding: "9px 10px",
+      font: baseFont,
+      fontWeight: 800,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    collectButton: {
+      width: "100%",
+      border: `1px solid ${palette.activeBorder}`,
+      borderRadius: 8,
+      background: palette.activeSurface,
+      color: palette.activeText,
+      padding: "9px 10px",
+      font: baseFont,
+      fontWeight: 800,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    status: {
+      marginTop: 8,
+      color: palette.subtleText,
+      fontSize: 12,
+    } satisfies CSSProperties,
+    linkButton: {
+      border: `1px solid ${palette.linkBorder}`,
+      borderRadius: 999,
+      background: palette.linkBackground,
+      color: palette.linkText,
+      padding: "4px 7px",
+      font: baseFont,
+      fontSize: 11,
+      fontWeight: 750,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    deleteButton: {
+      border: `1px solid ${palette.dangerBorder}`,
+      borderRadius: 999,
+      background: palette.dangerBackground,
+      color: palette.dangerText,
+      padding: "4px 7px",
+      font: baseFont,
+      fontSize: 11,
+      fontWeight: 750,
+      cursor: "pointer",
+    } satisfies CSSProperties,
+    preview: {
+      position: "fixed",
+      maxWidth: 240,
+      pointerEvents: "auto",
+      background: palette.surface,
+      border: `1px solid ${palette.border}`,
+      borderRadius: 10,
+      padding: 10,
+      boxShadow: `0 14px 35px ${palette.shadow}`,
+      color: palette.text,
+    } satisfies CSSProperties,
+    previewHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      marginBottom: 6,
+      color: palette.text,
+    } satisfies CSSProperties,
+    previewTitle: {
+      color: palette.subtleText,
+      fontSize: 12,
+      fontWeight: 800,
+    } satisfies CSSProperties,
+    previewActions: {
+      display: "inline-flex",
+      gap: 6,
+      color: palette.text,
+    } satisfies CSSProperties,
+    iconButton: {
+      width: 26,
+      height: 26,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0,
+      lineHeight: 1,
+    } satisfies CSSProperties,
+    pin: {
+      position: "fixed",
+      border: 0,
+      width: 20,
+      height: 20,
+      borderRadius: 999,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "auto",
+      background: palette.pinBackground,
+      color: palette.pinText,
+      fontSize: 12,
+      fontWeight: 800,
+      boxShadow: `0 8px 18px ${palette.shadow}`,
+      cursor: "pointer",
+      padding: 0,
+    } satisfies CSSProperties,
+  };
+}
+
+type AnnotatorStyles = ReturnType<typeof createStyles>;
