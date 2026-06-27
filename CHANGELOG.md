@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+### Patch Changes
+
+- e981412: Use explicit annotator colors for light and dark color schemes instead of relying on inherited text colors.
+
 ## 0.3.1
 
 ### Patch Changes
