@@ -54,6 +54,7 @@ describe("SourceAnnotator", () => {
     roots = [];
     document.body.innerHTML = "";
     window.history.replaceState(null, "", "/");
+    mockPreferredColorScheme("light");
     captureMocks.captureAnnotationTarget.mockReset();
     captureMocks.captureElementAnnotation.mockReset();
     captureMocks.createAnnotationId.mockReset();
@@ -89,11 +90,53 @@ describe("SourceAnnotator", () => {
     return { container, target };
   }
 
+  it("renders explicit colors for annotator UI in light mode", async () => {
+    const target = createBodyTarget();
+    mockCaptureTarget(createTarget({ text: "Target" }));
+    const container = renderAnnotator({ renderToaster: false });
+
+    beginAnnotation(container);
+    await clickTarget(target);
+
+    assertAnnotatorElementsHaveExplicitColor(container);
+    expect(getButton(container, "Annotating").style.color).not.toBe("");
+    expect(container.querySelector("textarea")?.style.color).not.toBe("");
+
+    await saveCurrentNote(container, "Explicit color");
+
+    const pin = getButton(container, "1");
+    act(() => {
+      pin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+
+    assertAnnotatorElementsHaveExplicitColor(container);
+  });
+
+  it("uses explicit dark colors when the OS prefers dark mode", () => {
+    mockPreferredColorScheme("dark");
+    const container = renderAnnotator();
+    const button = getButton(container, "Annotate");
+
+    expect(sonnerMocks.toasterRender).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "dark" })
+    );
+    expect(normalizeCssColor(button.style.color)).toMatch(
+      /^(#e2e8f0|rgb\(226,232,240\))$/
+    );
+    expect(normalizeCssColor(button.style.background)).toMatch(
+      /^(#0f172a|rgb\(15,23,42\))$/
+    );
+  });
+
   it("renders an owned Sonner Toaster by default", () => {
     renderAnnotator();
 
     expect(sonnerMocks.toasterRender).toHaveBeenCalledWith(
-      expect.objectContaining({ position: "bottom-right", richColors: true })
+      expect.objectContaining({
+        position: "bottom-right",
+        richColors: true,
+        theme: "light",
+      })
     );
   });
 
@@ -640,6 +683,52 @@ async function clickTarget(target: Element, init: MouseEventInit = {}) {
     );
     await Promise.resolve();
   });
+}
+
+function assertAnnotatorElementsHaveExplicitColor(container: Element) {
+  const root = container.querySelector<HTMLElement>(
+    "[data-mikuexe-annotator-root]"
+  );
+
+  if (!root) {
+    throw new Error("Annotator root not found");
+  }
+
+  const missingColor = [root, ...root.querySelectorAll<HTMLElement>("*")]
+    .filter((element) => !element.style.color)
+    .map(describeElement);
+
+  expect(missingColor).toEqual([]);
+}
+
+function describeElement(element: HTMLElement): string {
+  const label = element.getAttribute("aria-label") ?? element.textContent;
+  return `${element.tagName.toLowerCase()}${label ? `:${label}` : ""}`;
+}
+
+function mockPreferredColorScheme(colorScheme: "light" | "dark") {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn(
+      (query: string) =>
+        ({
+          matches:
+            query === "(prefers-color-scheme: dark)" && colorScheme === "dark",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as MediaQueryList
+    ),
+  });
+}
+
+function normalizeCssColor(color: string): string {
+  return color.toLowerCase().replace(/\s/g, "");
 }
 
 function getButton(container: Element, text: string): HTMLButtonElement {
