@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+### Patch Changes
+
+- 7a88f12: Focus the annotation note textbox after selecting a target so typing works immediately.
+
 ## 0.3.2
 
 ### Patch Changes
