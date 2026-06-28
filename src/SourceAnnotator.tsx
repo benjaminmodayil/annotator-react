@@ -967,6 +967,10 @@ function DraftPopover({
   onSave: () => void;
   styles: AnnotatorStyles;
 }) {
+  const focusTextarea = useCallback((node: HTMLTextAreaElement | null) => {
+    node?.focus();
+  }, []);
+
   if (!selected?.targets.length) {
     return null;
   }
@@ -988,6 +992,7 @@ function DraftPopover({
         value={note}
         onChange={(event) => onNoteChange(event.target.value)}
         placeholder="What should change here?"
+        ref={focusTextarea}
         aria-label="Annotation note"
         style={styles.textarea}
         rows={4}

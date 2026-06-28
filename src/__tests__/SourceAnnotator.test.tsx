@@ -207,6 +207,20 @@ describe("SourceAnnotator", () => {
     );
   });
 
+  it("focuses the note textbox after selecting a target", async () => {
+    const target = createBodyTarget();
+    mockCaptureTarget(createTarget({ text: "Target" }));
+    const container = renderAnnotator();
+
+    beginAnnotation(container);
+    await clickTarget(target);
+
+    const textarea = container.querySelector("textarea");
+
+    expect(textarea).toBeInstanceOf(HTMLTextAreaElement);
+    expect(document.activeElement).toBe(textarea);
+  });
+
   it("shows annotation content and edit/delete actions when hovering a numbered dot", async () => {
     const { container } = await createSavedAnnotation("Original note");
 
